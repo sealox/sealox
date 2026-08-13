@@ -2,7 +2,7 @@
 
 ## 一句话定位
 
-桌面 app：把项目丢进来，agent 负责部署到 Sealos，一屏看到部署产生的全部资源。
+桌面 app：把项目丢进来，agent 负责部署到 Sealos，部署产生的全部资源清晰可见。
 内部 MVP，用来证明 agent-first 的部署体验优于 Sealos 控制台。
 
 ## 背景
@@ -33,14 +33,33 @@
 - 成功标准与 skill 一致：workload ready 且公网 URL 返回真实页面，否则如实报告
   失败原因。
 
-### 资源展示（唯一一屏）
+### 主界面与资源展示
 
-- 以"这次部署"为单位聚合：应用状态、公网域名（点击打开）、数据库（只展示连接
-  信息所在的 secret 名，不显示明文）、实时日志。
-- 数据全部直读 Sealos 现有 API（namespace-scoped k8s API + Template API），
-  本地不存业务状态，展示内容永远与 Sealos 一致。
-- 失败诊断：agent 读 pod 日志和 events，输出人话结论。
-- 删除：以模板实例为单位整体删除，需二次确认。
+- 布局：左侧 256px 侧边栏 + 右侧内容区，视觉与结构对齐 Lovable 桌面版首页
+  （从 lovable.dev/dashboard 实测 DOM/样式复刻）。
+- 侧边栏：工作空间胶囊；主导航**首页、应用、数据库、存储**；"最近"区展示
+  最新模板实例；底部工作空间卡片与头像入口进**用户信息**，右下角全局刷新。
+- **首页**（默认页）：渐变背景 + 居中部署输入框（拖入文件夹/粘贴 git 地址，
+  M2 接线）＋模板建议 chips。即 Lovable 的 prompt hero 布局。
+- **应用**：应用 = 模板实例（Template API 的 instance）。一个实例
+  一张卡片，聚合展示：
+  - 状态由实例名下的工作负载与数据库聚合，优先级：异常 > 启动中 > 运行中 >
+    已暂停；
+  - 模板名、工作负载/数据库/存储桶数量、创建时间；
+  - 公网域名（点击用外部浏览器打开）；
+  - 故障 pod 的原因与重启次数（标红展示）。
+- 应用页底部"模板之外的工作负载"小节：不属于任何模板实例的工作负载（如直接
+  从 App Launchpad 部署的）单独展示，保证所见与 Sealos 实际状态一致。
+- **数据库**：KubeBlocks Cluster 列表——引擎、版本、阶段、所属实例。
+- **存储**：ObjectStorageBucket 列表——策略（私有/公开读/公开读写）、实际
+  桶名、创建时间。
+- **用户信息**：区域、API server、命名空间、工作空间、登录时间、kubeconfig
+  路径；退出登录放在此页。
+- 数据规则：全部直读 Sealos 现有 API（namespace-scoped k8s API + Template
+  API），本地不存业务状态；15 秒自动刷新 + 手动刷新；数据库只展示连接信息
+  所在的 secret 名，不显示明文。
+- 留给 M3：实时日志、失败诊断（agent 读日志/events 输出人话结论）、以模板
+  实例为单位的整体删除（需二次确认）。
 
 ## 非目标（v1 明确不做）
 
@@ -59,8 +78,24 @@
 - **Vercel eve（本地运行）**：agent 运行时在用户本机作为 app 的后台 AI 服务
   运行，部署逻辑从 use-sealos skill 移植。
 - **Sealos**：零改动，只消费现有 API。
+- **品牌**：logo 采用 Sealos 官方 mark 的黑金重配色（黑底圆角方 + 金渐变，
+  路径不变）；源文件 `apps/electron/src/renderer/src/assets/logo.svg`，应用
+  图标由 electron-builder 从 `build/icon.png` 生成。
 - 数据流：部署动作走 Electron → 本地 eve agent → Sealos；资源展示走
   Electron → Sealos API 直连。
+
+## 工程约定
+
+- k8s 访问用 `@kubernetes/client-node` 2.x（对象参数风格、直接返回 body）；
+  Electron 39（Node 22+）可以直接加载纯 ESM 依赖，无需特殊打包处理。
+- `electron` 依赖钉精确版本（当前 `39.8.10`）：electron-builder 在 workspace
+  提升安装下不接受范围版本。
+- 本地开发用 `electron-vite dev --watch`：主进程/preload 改动自动热重启；
+  只有渲染进程能靠 HMR，不开 watch 时主进程改动不会生效。
+- 依赖统一从仓库根安装（npm workspaces）；根 `package.json` 的
+  `engines.node` 由 eve 脚手架锁定为 24.x。
+- 主进程与渲染进程的共享类型集中在 `apps/electron/src/shared/types.ts`，
+  preload 暴露的 `window.helios` API 接口也定义在这里。
 
 ## 参考
 
@@ -86,8 +121,8 @@
 
 ## 里程碑
 
-1. **M1 只读链路**：Electron 壳 + 登录 + 读取并展示当前 namespace 的资源
-   （先验证 Sealos API 直连可行）。
+1. **M1 只读链路**（已完成，2026-08-13）：Electron 壳 + 登录 + 侧边栏四页
+   只读资源展示；真实账号验证通过（device flow 登录路径待端到端验证）。
 2. **M2 部署链路**：按难度递增接入三条路径——模板店 → 官方镜像 → 源码构建。
 3. **M3 体验闭环**：实时进度流、失败诊断、整体删除。
 4. **M4 交付**：打包 dmg，准备与 Sealos 控制台的对比演示。

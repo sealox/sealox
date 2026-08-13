@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { LoginEvent, RegionOption, SealosStatus } from '../../../shared/types'
+import logo from '../assets/logo.svg'
 
 interface Props {
   onAuthenticated: (status: SealosStatus) => void
@@ -77,7 +78,7 @@ function LoginScreen({ onAuthenticated }: Props): React.JSX.Element {
   return (
     <div className="login">
       <div className="login-brand">
-        <div className="login-sun" aria-hidden="true" />
+        <img className="login-logo" src={logo} alt="" />
         <h1>Helios</h1>
         <p>把项目丢进来，剩下的交给 agent。</p>
       </div>

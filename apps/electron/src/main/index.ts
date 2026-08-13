@@ -78,6 +78,16 @@ function registerIpc(): void {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.helios.app')
 
+  // dev 模式下 dock 显示的是 Electron 默认图标；打包版由 electron-builder 用 build/icon.png 生成
+  if (process.platform === 'darwin') {
+    app.dock?.setIcon(icon)
+  }
+
+  // Packaged builds get the icon from electron-builder; dev needs it set here.
+  if (process.platform === 'darwin') {
+    app.dock?.setIcon(icon)
+  }
+
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })

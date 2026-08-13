@@ -4,7 +4,10 @@ export interface SealosStatus {
   namespace?: string
   regionDomain?: string
   workspace?: string
+  /** 工作空间的展示名（auth.json 里的 teamName），比 workspace id 友好 */
+  workspaceName?: string
   authenticatedAt?: string
+  kubeconfigPath?: string
 }
 
 export type LoginEvent =
@@ -50,6 +53,16 @@ export interface InstanceInfo {
   createdAt?: string
 }
 
+export interface BucketInfo {
+  name: string
+  /** private | publicRead | publicReadwrite */
+  policy?: string
+  /** actual S3 bucket name from status, if reported */
+  bucketName?: string
+  createdAt?: string
+  instance?: string
+}
+
 export interface ResourceSnapshot {
   namespace: string
   regionDomain: string
@@ -57,6 +70,7 @@ export interface ResourceSnapshot {
   apps: AppWorkload[]
   databases: DatabaseInfo[]
   instances: InstanceInfo[]
+  buckets: BucketInfo[]
   /** non-fatal problems while assembling the snapshot (e.g. template API down) */
   warnings: string[]
 }

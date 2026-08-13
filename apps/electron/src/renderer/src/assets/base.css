@@ -1,19 +1,35 @@
 :root {
   color-scheme: light;
-  --bg: #f6f7f9;
-  --panel: #ffffff;
-  --panel-2: #f1f2f5;
-  --border: #e3e5ea;
-  --text: #1a1c22;
-  --text-dim: #6b7280;
-  /* amber that stays readable as text on white */
-  --accent: #b45309;
-  --sun-hi: #ffd479;
-  --sun-lo: #f59e0b;
+
+  /* ── Lovable 实测调色板（lovable.dev/dashboard 提取）── */
+  --bg-depth: oklch(0.9549 0 107); /* 侧边栏 */
+  --bg-primary: oklch(0.9851 0 107); /* 内容区 */
+  --bg-card: oklch(0.9999 0 107); /* 白卡片 */
+  --text-primary: oklch(0.1 0 0);
+  --text-secondary: oklch(0.3 0.001 107);
+  --text-tertiary: oklch(0.5 0.001 107);
+  --border: rgb(231 231 230);
+  --ring: oklch(0.55 0.002 107 / 0.4); /* 0.5px 内描边 */
+  --nav-active: oklch(0 0 0 / 0.08);
+  --hover: oklch(0 0 0 / 0.05);
+  --accent-blue: oklch(0.5243 0.2396 264.41); /* New 徽章蓝 */
+
+  /* 状态色 */
   --running: #059669;
   --progressing: #b45309;
   --failed: #dc2626;
   --stopped: #9ca3af;
+
+  /* 登录页仍在使用的旧变量 */
+  --bg: var(--bg-primary);
+  --panel: #ffffff;
+  --panel-2: #f1f2f5;
+  --text: var(--text-primary);
+  --text-dim: var(--text-tertiary);
+  --accent: #b45309;
+  --sun-hi: #ffd479;
+  --sun-lo: #f59e0b;
+
   --mono: 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
 }
 
@@ -32,18 +48,18 @@ body,
 }
 
 body {
-  background: var(--bg);
-  color: var(--text);
+  background: var(--bg-depth);
+  color: var(--text-primary);
   font-family:
     -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', 'Noto Sans SC', sans-serif;
   font-size: 14px;
-  line-height: 1.55;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }
 
 a {
-  color: var(--accent);
+  color: var(--text-secondary);
   text-decoration: none;
 }
 
@@ -64,13 +80,13 @@ a:hover {
 }
 
 .hint {
-  color: var(--text-dim);
+  color: var(--text-tertiary);
   font-size: 12px;
 }
 
 .error,
 .warning {
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 10px 14px;
   margin-bottom: 12px;
   font-size: 13px;

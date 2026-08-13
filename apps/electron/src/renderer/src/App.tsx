@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { SealosStatus } from '../../shared/types'
 import LoginScreen from './components/LoginScreen'
 import ResourcesScreen from './components/ResourcesScreen'
+import logo from './assets/logo.svg'
 
 function App(): React.JSX.Element {
   const [status, setStatus] = useState<SealosStatus | null>(null)
@@ -16,7 +17,11 @@ function App(): React.JSX.Element {
   }, [refreshStatus])
 
   if (status === null) {
-    return <div className="app-loading">☀</div>
+    return (
+      <div className="app-loading">
+        <img className="loading-logo" src={logo} alt="" />
+      </div>
+    )
   }
 
   if (!status.authenticated) {

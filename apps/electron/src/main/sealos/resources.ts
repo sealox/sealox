@@ -3,6 +3,7 @@ import type { V1Ingress, V1Pod } from '@kubernetes/client-node'
 import type {
   AppStatus,
   AppWorkload,
+  BucketInfo,
   DatabaseInfo,
   InstanceInfo,
   PodInfo,
@@ -117,6 +118,46 @@ async function listDatabases(
   return []
 }
 
+interface ObjectStorageBucket {
+  metadata?: {
+    name?: string
+    labels?: Record<string, string>
+    creationTimestamp?: string
+  }
+  spec?: { policy?: string }
+  status?: { name?: string }
+}
+
+async function listBuckets(
+  kc: k8s.KubeConfig,
+  namespace: string,
+  warnings: string[]
+): Promise<BucketInfo[]> {
+  const custom = kc.makeApiClient(k8s.CustomObjectsApi)
+  try {
+    const resp = (await custom.listNamespacedCustomObject({
+      group: 'objectstorage.sealos.io',
+      version: 'v1',
+      namespace,
+      plural: 'objectstoragebuckets'
+    })) as { items?: ObjectStorageBucket[] }
+    return (resp.items ?? []).map((bucket) => ({
+      name: bucket.metadata?.name ?? '',
+      policy: bucket.spec?.policy,
+      bucketName: bucket.status?.name,
+      createdAt: bucket.metadata?.creationTimestamp,
+      instance: bucket.metadata?.labels?.[INSTANCE_LABEL]
+    }))
+  } catch (err) {
+    const status = (err as { code?: number }).code
+    // 404 means the CRD is absent in this region — not an error worth surfacing.
+    if (status !== 404) {
+      warnings.push(`存储桶列表读取失败：${err instanceof Error ? err.message : String(err)}`)
+    }
+    return []
+  }
+}
+
 async function listTemplateInstances(
   regionDomain: string,
   warnings: string[]
@@ -167,14 +208,16 @@ export async function fetchResources(): Promise<ResourceSnapshot> {
   const networking = kc.makeApiClient(k8s.NetworkingV1Api)
 
   const warnings: string[] = []
-  const [deployments, statefulSets, pods, ingresses, databases, instances] = await Promise.all([
-    apps.listNamespacedDeployment({ namespace }),
-    apps.listNamespacedStatefulSet({ namespace }),
-    core.listNamespacedPod({ namespace }),
-    networking.listNamespacedIngress({ namespace }),
-    listDatabases(kc, namespace, warnings),
-    listTemplateInstances(regionDomain, warnings)
-  ])
+  const [deployments, statefulSets, pods, ingresses, databases, instances, buckets] =
+    await Promise.all([
+      apps.listNamespacedDeployment({ namespace }),
+      apps.listNamespacedStatefulSet({ namespace }),
+      core.listNamespacedPod({ namespace }),
+      networking.listNamespacedIngress({ namespace }),
+      listDatabases(kc, namespace, warnings),
+      listTemplateInstances(regionDomain, warnings),
+      listBuckets(kc, namespace, warnings)
+    ])
 
   const podItems = pods.items ?? []
   const ingressItems = ingresses.items ?? []
@@ -227,6 +270,7 @@ export async function fetchResources(): Promise<ResourceSnapshot> {
     apps: workloads.sort((a, b) => a.name.localeCompare(b.name)),
     databases,
     instances,
+    buckets,
     warnings
   }
 }

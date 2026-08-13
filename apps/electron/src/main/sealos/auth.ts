@@ -45,14 +45,16 @@ export function getStatus(): SealosStatus {
   const hasCredential = kc.includes('token:') || kc.includes('client-certificate')
   if (!server || !hasCredential) return { authenticated: false }
   const auth = loadAuthJson()
-  const workspace = auth['current_workspace'] as { id?: string } | undefined
+  const workspace = auth['current_workspace'] as { id?: string; teamName?: string } | undefined
   return {
     authenticated: true,
     server,
     namespace: kubeconfigField(kc, 'namespace'),
     regionDomain: new URL(server).hostname ?? undefined,
     workspace: workspace?.id,
-    authenticatedAt: auth['authenticated_at'] as string | undefined
+    workspaceName: workspace?.teamName,
+    authenticatedAt: auth['authenticated_at'] as string | undefined,
+    kubeconfigPath: KUBECONFIG_PATH
   }
 }
 
