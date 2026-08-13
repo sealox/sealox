@@ -153,10 +153,10 @@ function ArrowUpIcon({ size }: IconProps): React.JSX.Element {
   )
 }
 
-function ArrowRightIcon({ size }: IconProps): React.JSX.Element {
+function XLogoIcon({ size }: IconProps): React.JSX.Element {
   return (
-    <svg {...iconAttrs(size)}>
-      <path d="M5 12h14m-7-7 7 7-7 7" />
+    <svg width={size ?? 16} height={size ?? 16} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z" />
     </svg>
   )
 }
@@ -407,11 +407,17 @@ function HomeHero(): React.JSX.Element {
     <div className="hero">
       <div className="hero-spacer-top" />
       <div className="hero-main">
-        <div className="announce">
-          <span className="announce-badge">New</span>
-          <span>agent 部署链路将在 M2 接入</span>
-          <ArrowRightIcon size={16} />
-        </div>
+        <button
+          className="announce"
+          title="在 X 上关注我"
+          onClick={() =>
+            openUrl('https://sealos.io/?utm_source=Bounty-ZhuChe&utm_medium=x&utm_campaign=bio')
+          }
+        >
+          <span className="announce-badge">Hi</span>
+          <span>Follow me on X</span>
+          <XLogoIcon size={15} />
+        </button>
         <h1>今天部署点什么？</h1>
         <div className="prompt-card">
           <textarea

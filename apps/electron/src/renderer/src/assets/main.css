@@ -267,6 +267,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  width: 100%;
   height: 32px;
   padding: 6px 8px 6px 6px;
   border-radius: 10px;
@@ -618,11 +619,13 @@
 }
 
 .announce {
+  -webkit-app-region: no-drag;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 8px 12px 8px 8px;
   margin-bottom: 24px;
+  border: none;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.4);
   box-shadow:
@@ -630,9 +633,16 @@
     inset 0 0 0 0.5px rgba(255, 255, 255, 0.48),
     0 2px 2px -1px rgba(0, 0, 0, 0.02),
     0 4px 4px -2px rgba(0, 0, 0, 0.02);
+  font-family: inherit;
   font-size: 14px;
   font-weight: 480;
   color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.announce:hover {
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .announce-badge {

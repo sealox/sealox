@@ -43,8 +43,10 @@
   **首页、模板、应用、数据库、存储**；"最近"区展示最新模板实例；底部
   Upgrade to Pro 卡片（暂为纯展示，跳转待定）；头像入口进**用户信息**，
   右下角全局刷新。
-- **首页**（默认页）：渐变背景 + 居中部署输入框（拖入文件夹/粘贴 git 地址，
-  M2 接线）＋模板建议 chips。即 Lovable 的 prompt hero 布局。
+- **首页**（默认页）：白底＋logo 淡金日光背景（Sealos 中性调性，金色只做
+  点缀）+ 居中部署输入框（拖入文件夹/粘贴 git 地址，M2 接线）＋模板建议
+  chips，布局即 Lovable 的 prompt hero。输入框上方是 "Hi · Follow me on X"
+  胶囊（X logo，点击外部浏览器打开带 UTM 的推广链接）。
 - **应用**：应用 = 模板实例（Template API 的 instance）。一个实例
   一张卡片，聚合展示：
   - 状态由实例名下的工作负载与数据库聚合，优先级：异常 > 启动中 > 运行中 >
@@ -111,8 +113,9 @@
   否则 Dock 里显得偏大且有白边。注意 `qlmanage` 转 SVG 会把透明区填成白色，
   生成要走 Chromium canvas：`npx electron apps/electron/scripts/gen-icon.mjs
   <svg> <png>`。
-- 首页视觉对齐 Lovable：色板、尺寸、渐变均为 lovable.dev/dashboard 实测值
-  （oklch 原值直接可用，Electron 39 的 Chromium 支持）。
+- 首页布局与尺寸对齐 Lovable（lovable.dev/dashboard 实测值，oklch 原值直接
+  可用，Electron 39 的 Chromium 支持）；配色不随 Lovable——背景为白底＋
+  logo 金（`#F0BE4E`/`#EDC868` 低透明度光晕），高饱和点缀色只保留金色系。
 
 ## 参考
 
