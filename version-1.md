@@ -86,9 +86,9 @@
 - **品牌**：logo 采用 Sealos 官方 mark 的金色重配色，源资产在根 `assets/`
   （blackgold 黑底、whitegold 白底两版）。侧边栏用无底纯金标
   （`src/renderer/src/assets/sealos-logo-gold.svg`，whitegold 去底）；登录/
-  加载页用 `logo.svg`；应用图标用 blackgold——dev 下主进程
-  `app.dock.setIcon(resources/icon.png)`，打包由 electron-builder 从
-  `build/icon.png` 生成。
+  加载页用 `logo.svg`；应用图标用 whitegold（与侧边栏同一套金，dock 与应用内
+  观感一致）——dev 下主进程 `app.dock.setIcon(resources/icon.png)`，打包由
+  electron-builder 从 `build/icon.png` 生成。
 - 数据流：部署动作走 Electron → 本地 eve agent → Sealos；资源展示走
   Electron → Sealos API 直连。
 
