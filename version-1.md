@@ -38,7 +38,8 @@
 - 布局：左侧 256px 侧边栏 + 右侧内容区，视觉与结构对齐 Lovable 桌面版首页
   （从 lovable.dev/dashboard 实测 DOM/样式复刻）。
 - 侧边栏：工作空间胶囊；主导航**首页、应用、数据库、存储**；"最近"区展示
-  最新模板实例；底部工作空间卡片与头像入口进**用户信息**，右下角全局刷新。
+  最新模板实例；底部 Upgrade to Pro 卡片（暂为纯展示，跳转待定）；头像入口
+  进**用户信息**，右下角全局刷新。
 - **首页**（默认页）：渐变背景 + 居中部署输入框（拖入文件夹/粘贴 git 地址，
   M2 接线）＋模板建议 chips。即 Lovable 的 prompt hero 布局。
 - **应用**：应用 = 模板实例（Template API 的 instance）。一个实例
@@ -78,9 +79,12 @@
 - **Vercel eve（本地运行）**：agent 运行时在用户本机作为 app 的后台 AI 服务
   运行，部署逻辑从 use-sealos skill 移植。
 - **Sealos**：零改动，只消费现有 API。
-- **品牌**：logo 采用 Sealos 官方 mark 的黑金重配色（黑底圆角方 + 金渐变，
-  路径不变）；源文件 `apps/electron/src/renderer/src/assets/logo.svg`，应用
-  图标由 electron-builder 从 `build/icon.png` 生成。
+- **品牌**：logo 采用 Sealos 官方 mark 的金色重配色，源资产在根 `assets/`
+  （blackgold 黑底、whitegold 白底两版）。侧边栏用无底纯金标
+  （`src/renderer/src/assets/sealos-logo-gold.svg`，whitegold 去底）；登录/
+  加载页用 `logo.svg`；应用图标用 blackgold——dev 下主进程
+  `app.dock.setIcon(resources/icon.png)`，打包由 electron-builder 从
+  `build/icon.png` 生成。
 - 数据流：部署动作走 Electron → 本地 eve agent → Sealos；资源展示走
   Electron → Sealos API 直连。
 
@@ -96,6 +100,11 @@
   `engines.node` 由 eve 脚手架锁定为 24.x。
 - 主进程与渲染进程的共享类型集中在 `apps/electron/src/shared/types.ts`，
   preload 暴露的 `window.helios` API 接口也定义在这里。
+- macOS 应用图标规范：1024 画布、主体 824 居中、四周 100px **真透明**边距，
+  否则 Dock 里显得偏大且有白边。注意 `qlmanage` 转 SVG 会把透明区填成白色，
+  生成要走 Chromium canvas（见 git 历史里的 gen-icon 脚本）。
+- 首页视觉对齐 Lovable：色板、尺寸、渐变均为 lovable.dev/dashboard 实测值
+  （oklch 原值直接可用，Electron 39 的 Chromium 支持）。
 
 ## 参考
 
