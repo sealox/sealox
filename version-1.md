@@ -102,7 +102,8 @@
   preload 暴露的 `window.helios` API 接口也定义在这里。
 - macOS 应用图标规范：1024 画布、主体 824 居中、四周 100px **真透明**边距，
   否则 Dock 里显得偏大且有白边。注意 `qlmanage` 转 SVG 会把透明区填成白色，
-  生成要走 Chromium canvas（见 git 历史里的 gen-icon 脚本）。
+  生成要走 Chromium canvas：`npx electron apps/electron/scripts/gen-icon.mjs
+  <svg> <png>`。
 - 首页视觉对齐 Lovable：色板、尺寸、渐变均为 lovable.dev/dashboard 实测值
   （oklch 原值直接可用，Electron 39 的 Chromium 支持）。
 
