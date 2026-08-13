@@ -4,3 +4,6 @@ out
 .DS_Store
 .eslintcache
 *.log*
+
+# 本地开发素材（不入库）
+dev-assets/

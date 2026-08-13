@@ -73,11 +73,10 @@ function iconAttrs(size = 20): React.SVGProps<SVGSVGElement> {
   }
 }
 
-function HomeIcon({ size }: IconProps): React.JSX.Element {
+function DeployIcon({ size }: IconProps): React.JSX.Element {
   return (
     <svg {...iconAttrs(size)}>
-      <path d="M4.5 10.3 12 4.5l7.5 5.8v7.2a1.5 1.5 0 0 1-1.5 1.5H6a1.5 1.5 0 0 1-1.5-1.5v-7.2Z" />
-      <path d="M9.5 19v-5.2h5V19" />
+      <path d="M13 3 5 13.5h6L11 21l8-10.5h-6L13 3Z" />
     </svg>
   )
 }
@@ -573,9 +572,19 @@ function AccountTab({
 
 /* ── screen ────────────────────────────────────── */
 
-const NAV: Array<{ id: Tab; label: string; icon: React.JSX.Element }> = [
-  { id: 'home', label: '首页', icon: <HomeIcon /> },
-  { id: 'templates', label: '模板', icon: <TemplatesIcon /> },
+interface NavItem {
+  id: Tab
+  label: string
+  icon: React.JSX.Element
+}
+
+/* 上组=发起部署（动作+素材），下组=看结果（我的资源） */
+const NAV_DEPLOY: NavItem[] = [
+  { id: 'home', label: '部署', icon: <DeployIcon /> },
+  { id: 'templates', label: '模板', icon: <TemplatesIcon /> }
+]
+
+const NAV_RESOURCES: NavItem[] = [
   { id: 'apps', label: '应用', icon: <AppsIcon /> },
   { id: 'databases', label: '数据库', icon: <DatabaseIcon /> },
   { id: 'storage', label: '存储', icon: <StorageIcon /> }
@@ -689,7 +698,18 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
             </div>
 
             <nav className="nav">
-              {NAV.map((item) => (
+              {NAV_DEPLOY.map((item) => (
+                <button
+                  key={item.id}
+                  className={`nav-item${tab === item.id ? ' active' : ''}`}
+                  onClick={() => setTab(item.id)}
+                >
+                  <span className="nav-icon">{item.icon}</span>
+                  {item.label}
+                </button>
+              ))}
+              <div className="section-label nav-group-label">资源</div>
+              {NAV_RESOURCES.map((item) => (
                 <button
                   key={item.id}
                   className={`nav-item${tab === item.id ? ' active' : ''}`}

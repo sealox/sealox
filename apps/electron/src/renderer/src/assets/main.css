@@ -367,6 +367,13 @@
   color: var(--text-tertiary);
 }
 
+/* 主导航里的分组标题（资源） */
+.nav-group-label {
+  margin-top: 8px;
+  height: 26px;
+  font-size: 12.5px;
+}
+
 .recent-row {
   display: flex;
   align-items: center;

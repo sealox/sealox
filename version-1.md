@@ -43,14 +43,14 @@
   角色、成员数）、成员列表（头像+角色）、邀请成员（生成管理员/开发者邀请
   链接并复制，`/WorkspaceInvite/?code=` 落地页与 desktop 一致）、重命名
   （仅拥有者）、切换工作空间、新建工作空间、底部 Upgrade 栏（跳 region 的
-  费用中心）；权限门控与 desktop 相同（邀请需拥有者/管理员）。主导航
-  **首页、模板、应用、数据库、存储**；"最近"区展示最新模板实例；底部
-  工作空间配额卡（CPU/内存/存储/GPU 的 used/limit，直读 namespace 的
+  费用中心）；  权限门控与 desktop 相同（邀请需拥有者/管理员）。主导航按故事线分两组：
+  **部署、模板**（发起部署）＋"资源"组**应用、数据库、存储**（部署产物）；
+  "最近"区展示最新模板实例；底部工作空间配额卡（CPU/内存/存储/GPU 的 used/limit，直读 namespace 的
   ResourceQuota——与 costcenter usage 接口同源，随资源快照 15s 轮询刷新）；
   头像入口进**用户信息**，右下角全局刷新。
-- **首页**（默认页）：白底＋logo 淡金日光背景（Sealos 中性调性，金色只做
-  点缀）+ 居中部署输入框（拖入文件夹/粘贴 git 地址，M2 接线）＋模板建议
-  chips，布局即 Lovable 的 prompt hero。右下角常驻 "Hi · Follow me on X"
+- **部署**（默认页，原"首页"）：白底＋logo 淡金日光背景（Sealos 中性调性，
+  金色只做点缀）+ 居中部署输入框（拖入文件夹/粘贴 git 地址，M2 接线）＋模板
+  建议 chips，布局即 Lovable 的 prompt hero。右下角常驻 "Hi · Follow me on X"
   胶囊（X logo，点击外部浏览器打开 x.com/norberia_cz）。
 - **应用**：应用 = 模板实例（Template API 的 instance）。一个实例
   一张卡片，聚合展示：
