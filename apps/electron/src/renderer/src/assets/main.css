@@ -959,7 +959,8 @@
   user-select: text;
 }
 
-.chip-instance {
+/* 所属项目（模板实例）chip */
+.chip-project {
   color: var(--text-secondary);
   background: var(--nav-active);
   box-shadow: none;

@@ -7,7 +7,7 @@ import type {
   AppWorkload,
   BucketInfo,
   DatabaseInfo,
-  InstanceInfo,
+  ProjectInfo,
   ResourceSnapshot,
   SealosStatus
 } from '../../../shared/types'
@@ -18,7 +18,7 @@ interface Props {
   onLogout: () => Promise<void>
 }
 
-type Tab = 'home' | 'templates' | 'apps' | 'databases' | 'storage' | 'account'
+type Tab = 'home' | 'templates' | 'projects' | 'apps' | 'databases' | 'storage' | 'account'
 
 const REFRESH_INTERVAL_MS = 15_000
 
@@ -86,6 +86,16 @@ function TemplatesIcon({ size }: IconProps): React.JSX.Element {
     <svg {...iconAttrs(size)}>
       <rect x="4" y="4.5" width="16" height="15" rx="2" />
       <path d="M4 9.5h16M10 9.5V19.5" />
+    </svg>
+  )
+}
+
+function ProjectsIcon({ size }: IconProps): React.JSX.Element {
+  return (
+    <svg {...iconAttrs(size)}>
+      <path d="M12 3.5 20 7.8l-8 4.3-8-4.3 8-4.3Z" />
+      <path d="m4 12.2 8 4.3 8-4.3" />
+      <path d="m4 16.5 8 4.3 8-4.3" />
     </svg>
   )
 }
@@ -241,8 +251,8 @@ function UrlLinks({ urls }: { urls: string[] }): React.JSX.Element | null {
   )
 }
 
-interface InstanceView {
-  instance: InstanceInfo
+interface ProjectView {
+  project: ProjectInfo
   status: AppStatus | null
   workloads: AppWorkload[]
   databases: DatabaseInfo[]
@@ -250,22 +260,22 @@ interface InstanceView {
   urls: string[]
 }
 
-function InstanceCard({ view }: { view: InstanceView }): React.JSX.Element {
-  const { instance, status, workloads, databases, buckets, urls } = view
+function ProjectCard({ view }: { view: ProjectView }): React.JSX.Element {
+  const { project, status, workloads, databases, buckets, urls } = view
   const failingPods = workloads.flatMap((w) => w.pods.filter((p) => p.reason))
   const parts = [
     status ? STATUS_LABEL[status] : '无工作负载',
-    workloads.length > 0 ? `${workloads.length} 个工作负载` : null,
+    workloads.length > 0 ? `${workloads.length} 个应用` : null,
     databases.length > 0 ? `${databases.length} 个数据库` : null,
     buckets.length > 0 ? `${buckets.length} 个存储桶` : null,
-    instance.createdAt ? `创建于 ${new Date(instance.createdAt).toLocaleString()}` : null
+    project.createdAt ? `创建于 ${new Date(project.createdAt).toLocaleString()}` : null
   ].filter(Boolean)
   return (
     <div className="card">
       <div className="card-head">
         <span className={statusClass(status)} />
-        <h3>{instance.name}</h3>
-        {instance.template && <span className="chip chip-instance">{instance.template}</span>}
+        <h3>{project.name}</h3>
+        {project.template && <span className="chip chip-project">{project.template}</span>}
       </div>
       <div className="card-meta">
         <span>{parts.join(' · ')}</span>
@@ -292,6 +302,7 @@ function WorkloadCard({ app }: { app: AppWorkload }): React.JSX.Element {
         <span className={statusClass(app.status)} />
         <h3>{app.name}</h3>
         <span className="chip">{app.kind === 'Deployment' ? '无状态' : '有状态'}</span>
+        {app.project && <span className="chip chip-project">{app.project}</span>}
       </div>
       <div className="card-meta">
         <span>
@@ -324,7 +335,7 @@ function DatabaseCard({ db }: { db: DatabaseInfo }): React.JSX.Element {
         <span className={statusClass(dbPhaseToStatus(db.phase))} />
         <h3>{db.name}</h3>
         {db.engine && <span className="chip">{db.engine}</span>}
-        {db.instance && <span className="chip chip-instance">{db.instance}</span>}
+        {db.project && <span className="chip chip-project">{db.project}</span>}
       </div>
       <div className="card-meta">
         <span>
@@ -345,7 +356,7 @@ function BucketCard({ bucket }: { bucket: BucketInfo }): React.JSX.Element {
         {bucket.policy && (
           <span className="chip">{POLICY_LABEL[bucket.policy] ?? bucket.policy}</span>
         )}
-        {bucket.instance && <span className="chip chip-instance">{bucket.instance}</span>}
+        {bucket.project && <span className="chip chip-project">{bucket.project}</span>}
       </div>
       <div className="card-meta">
         {bucket.bucketName && (
@@ -390,7 +401,7 @@ function HomeHero(): React.JSX.Element {
     <div className="hero">
       <div className="hero-spacer-top" />
       <div className="hero-main">
-        <h1>今天部署点什么？</h1>
+        <h1>今天想开发点什么？</h1>
         <div className="prompt-card">
           <textarea
             ref={textareaRef}
@@ -446,15 +457,15 @@ function HomeHero(): React.JSX.Element {
 
 /* ── tabs ──────────────────────────────────────── */
 
-function AppsTab({ snapshot }: { snapshot: ResourceSnapshot }): React.JSX.Element {
-  const views = useMemo<InstanceView[]>(
+function ProjectsTab({ snapshot }: { snapshot: ResourceSnapshot }): React.JSX.Element {
+  const views = useMemo<ProjectView[]>(
     () =>
-      snapshot.instances.map((instance) => {
-        const workloads = snapshot.apps.filter((a) => a.instance === instance.name)
-        const databases = snapshot.databases.filter((d) => d.instance === instance.name)
-        const buckets = snapshot.buckets.filter((b) => b.instance === instance.name)
+      snapshot.projects.map((project) => {
+        const workloads = snapshot.apps.filter((a) => a.project === project.name)
+        const databases = snapshot.databases.filter((d) => d.project === project.name)
+        const buckets = snapshot.buckets.filter((b) => b.project === project.name)
         return {
-          instance,
+          project,
           workloads,
           databases,
           buckets,
@@ -467,13 +478,35 @@ function AppsTab({ snapshot }: { snapshot: ResourceSnapshot }): React.JSX.Elemen
       }),
     [snapshot]
   )
-  const standalone = useMemo(() => snapshot.apps.filter((a) => !a.instance), [snapshot])
 
-  if (views.length === 0 && standalone.length === 0) {
+  if (views.length === 0) {
     return (
       <div className="placeholder">
-        <p>还没有安装任何应用。</p>
-        <p className="hint">回到首页，把项目丢给 agent。</p>
+        <p>还没有项目。</p>
+        <p className="hint">回到部署页，把项目丢给 agent。</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid">
+      {views.map((view) => (
+        <ProjectCard key={view.project.name} view={view} />
+      ))}
+    </div>
+  )
+}
+
+function AppsTab({ snapshot }: { snapshot: ResourceSnapshot }): React.JSX.Element {
+  // 与 App Launchpad 相同的口径：带 app-deploy-manager 标签的工作负载
+  const launchpadApps = useMemo(() => snapshot.apps.filter((a) => a.launchpad), [snapshot])
+  const others = useMemo(() => snapshot.apps.filter((a) => !a.launchpad), [snapshot])
+
+  if (launchpadApps.length === 0 && others.length === 0) {
+    return (
+      <div className="placeholder">
+        <p>还没有应用。</p>
+        <p className="hint">应用是单个工作负载，部署项目或在 App Launchpad 创建后会出现在这里。</p>
       </div>
     )
   }
@@ -481,15 +514,15 @@ function AppsTab({ snapshot }: { snapshot: ResourceSnapshot }): React.JSX.Elemen
   return (
     <>
       <div className="grid">
-        {views.map((view) => (
-          <InstanceCard key={view.instance.name} view={view} />
+        {launchpadApps.map((app) => (
+          <WorkloadCard key={`${app.kind}-${app.name}`} app={app} />
         ))}
       </div>
-      {standalone.length > 0 && (
+      {others.length > 0 && (
         <section className="subsection">
-          <h2>模板之外的工作负载（{standalone.length}）</h2>
+          <h2>Launchpad 之外的工作负载（{others.length}）</h2>
           <div className="grid">
-            {standalone.map((app) => (
+            {others.map((app) => (
               <WorkloadCard key={`${app.kind}-${app.name}`} app={app} />
             ))}
           </div>
@@ -578,10 +611,11 @@ interface NavItem {
   icon: React.JSX.Element
 }
 
-/* 上组=发起部署（动作+素材），下组=看结果（我的资源） */
+/* 上组=高频动线（入口/素材/项目），下组=资源明细 */
 const NAV_DEPLOY: NavItem[] = [
-  { id: 'home', label: '部署', icon: <DeployIcon /> },
-  { id: 'templates', label: '模板', icon: <TemplatesIcon /> }
+  { id: 'home', label: '开始', icon: <DeployIcon /> },
+  { id: 'templates', label: '模板', icon: <TemplatesIcon /> },
+  { id: 'projects', label: '项目', icon: <ProjectsIcon /> }
 ]
 
 const NAV_RESOURCES: NavItem[] = [
@@ -599,6 +633,7 @@ const QUOTA_LABEL: Record<string, string> = {
 
 const TAB_TITLE: Record<Exclude<Tab, 'home'>, string> = {
   templates: '模板',
+  projects: '项目',
   apps: '应用',
   databases: '数据库',
   storage: '存储',
@@ -644,7 +679,7 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
 
   const recents = useMemo(
     () =>
-      (snapshot?.instances ?? [])
+      (snapshot?.projects ?? [])
         .slice()
         .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
         .slice(0, 5),
@@ -726,12 +761,16 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
               {error ? (
                 <div className="recents-empty">资源读取失败</div>
               ) : recents.length === 0 ? (
-                <div className="recents-empty">暂无最近应用</div>
+                <div className="recents-empty">暂无最近项目</div>
               ) : (
-                recents.map((inst) => (
-                  <button key={inst.name} className="recent-row" onClick={() => setTab('apps')}>
-                    <AppsIcon size={16} />
-                    <span className="recent-name">{inst.name}</span>
+                recents.map((project) => (
+                  <button
+                    key={project.name}
+                    className="recent-row"
+                    onClick={() => setTab('projects')}
+                  >
+                    <ProjectsIcon size={16} />
+                    <span className="recent-name">{project.name}</span>
                   </button>
                 ))
               )}
@@ -820,6 +859,7 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
 
                   {!snapshot && !error && <div className="placeholder">正在读取工作空间…</div>}
 
+                  {snapshot && tab === 'projects' && <ProjectsTab snapshot={snapshot} />}
                   {snapshot && tab === 'apps' && <AppsTab snapshot={snapshot} />}
                   {snapshot && tab === 'databases' && <DatabasesTab snapshot={snapshot} />}
                   {snapshot && tab === 'storage' && <StorageTab snapshot={snapshot} />}

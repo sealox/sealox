@@ -27,6 +27,7 @@ export interface PodInfo {
 
 export type AppStatus = 'Running' | 'Progressing' | 'Stopped' | 'Failed'
 
+/** Launchpad 意义上的"应用"：单个 Deployment/StatefulSet 工作负载 */
 export interface AppWorkload {
   name: string
   kind: 'Deployment' | 'StatefulSet'
@@ -35,7 +36,10 @@ export interface AppWorkload {
   replicas: number
   images: string[]
   urls: string[]
-  instance?: string
+  /** 所属项目（模板实例名），来自 cloud.sealos.io/deploy-on-sealos 标签 */
+  project?: string
+  /** 是否带 cloud.sealos.io/app-deploy-manager 标签（App Launchpad 管理的应用） */
+  launchpad: boolean
   pods: PodInfo[]
 }
 
@@ -44,10 +48,11 @@ export interface DatabaseInfo {
   engine?: string
   version?: string
   phase: string
-  instance?: string
+  project?: string
 }
 
-export interface InstanceInfo {
+/** "项目"：Template API 的实例，由多个组件（应用/数据库/存储）构成 */
+export interface ProjectInfo {
   name: string
   template?: string
   createdAt?: string
@@ -60,7 +65,7 @@ export interface BucketInfo {
   /** actual S3 bucket name from status, if reported */
   bucketName?: string
   createdAt?: string
-  instance?: string
+  project?: string
 }
 
 export interface QuotaItem {
@@ -80,7 +85,7 @@ export interface ResourceSnapshot {
   fetchedAt: string
   apps: AppWorkload[]
   databases: DatabaseInfo[]
-  instances: InstanceInfo[]
+  projects: ProjectInfo[]
   buckets: BucketInfo[]
   /** 工作空间 ResourceQuota 的 usage/limit */
   quota: QuotaItem[]

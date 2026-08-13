@@ -5,14 +5,16 @@ import type {
   AppWorkload,
   BucketInfo,
   DatabaseInfo,
-  InstanceInfo,
+  ProjectInfo,
   PodInfo,
   QuotaItem,
   ResourceSnapshot
 } from '../../shared/types'
 import { KUBECONFIG_PATH, readKubeconfigText } from './auth'
 
-const INSTANCE_LABEL = 'cloud.sealos.io/deploy-on-sealos'
+/** 项目（模板实例）归属标签 */
+const PROJECT_LABEL = 'cloud.sealos.io/deploy-on-sealos'
+/** App Launchpad 管理的应用标签 */
 const APP_LABEL = 'cloud.sealos.io/app-deploy-manager'
 
 const STUCK_REASONS = new Set([
@@ -107,7 +109,7 @@ async function listDatabases(
           cluster.spec?.clusterVersionRef ??
           cluster.metadata?.labels?.['clusterversion.kubeblocks.io/name'],
         phase: cluster.status?.phase ?? 'Unknown',
-        instance: cluster.metadata?.labels?.[INSTANCE_LABEL]
+        project: cluster.metadata?.labels?.[PROJECT_LABEL]
       }))
     } catch (err) {
       const status = (err as { code?: number }).code
@@ -147,7 +149,7 @@ async function listBuckets(
       policy: bucket.spec?.policy,
       bucketName: bucket.status?.name,
       createdAt: bucket.metadata?.creationTimestamp,
-      instance: bucket.metadata?.labels?.[INSTANCE_LABEL]
+      project: bucket.metadata?.labels?.[PROJECT_LABEL]
     }))
   } catch (err) {
     const status = (err as { code?: number }).code
@@ -159,10 +161,7 @@ async function listBuckets(
   }
 }
 
-async function listTemplateInstances(
-  regionDomain: string,
-  warnings: string[]
-): Promise<InstanceInfo[]> {
+async function listProjects(regionDomain: string, warnings: string[]): Promise<ProjectInfo[]> {
   try {
     const resp = await fetch(`https://template.${regionDomain}/api/instance/list`, {
       headers: { Authorization: encodeURIComponent(readKubeconfigText()) },
@@ -188,7 +187,9 @@ async function listTemplateInstances(
       createdAt: item.metadata?.creationTimestamp
     }))
   } catch (err) {
-    warnings.push(`模板实例列表读取失败：${err instanceof Error ? err.message : String(err)}`)
+    warnings.push(
+      `项目（模板实例）列表读取失败：${err instanceof Error ? err.message : String(err)}`
+    )
     return []
   }
 }
@@ -282,14 +283,14 @@ export async function fetchResources(): Promise<ResourceSnapshot> {
   const networking = kc.makeApiClient(k8s.NetworkingV1Api)
 
   const warnings: string[] = []
-  const [deployments, statefulSets, pods, ingresses, databases, instances, buckets, quota] =
+  const [deployments, statefulSets, pods, ingresses, databases, projects, buckets, quota] =
     await Promise.all([
       apps.listNamespacedDeployment({ namespace }),
       apps.listNamespacedStatefulSet({ namespace }),
       core.listNamespacedPod({ namespace }),
       networking.listNamespacedIngress({ namespace }),
       listDatabases(kc, namespace, warnings),
-      listTemplateInstances(regionDomain, warnings),
+      listProjects(regionDomain, warnings),
       listBuckets(kc, namespace, warnings),
       listQuota(core, namespace, warnings)
     ])
@@ -311,7 +312,8 @@ export async function fetchResources(): Promise<ResourceSnapshot> {
       status: appStatus(replicas, ready, workloadPods),
       images: (deploy.spec?.template?.spec?.containers ?? []).map((c) => c.image ?? ''),
       urls: urlsForApp(ingressItems, name),
-      instance: deploy.metadata?.labels?.[INSTANCE_LABEL],
+      project: deploy.metadata?.labels?.[PROJECT_LABEL],
+      launchpad: deploy.metadata?.labels?.[APP_LABEL] !== undefined,
       pods: workloadPods
     })
   }
@@ -333,7 +335,8 @@ export async function fetchResources(): Promise<ResourceSnapshot> {
       status: appStatus(replicas, ready, workloadPods),
       images: (sts.spec?.template?.spec?.containers ?? []).map((c) => c.image ?? ''),
       urls: urlsForApp(ingressItems, name),
-      instance: sts.metadata?.labels?.[INSTANCE_LABEL],
+      project: sts.metadata?.labels?.[PROJECT_LABEL],
+      launchpad: sts.metadata?.labels?.[APP_LABEL] !== undefined,
       pods: workloadPods
     })
   }
@@ -344,7 +347,7 @@ export async function fetchResources(): Promise<ResourceSnapshot> {
     fetchedAt: new Date().toISOString(),
     apps: workloads.sort((a, b) => a.name.localeCompare(b.name)),
     databases,
-    instances,
+    projects,
     buckets,
     quota,
     warnings
