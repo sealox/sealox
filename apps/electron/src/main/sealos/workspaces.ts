@@ -1,5 +1,16 @@
-import type { SealosStatus, WorkspaceInfo } from '../../shared/types'
-import { getStatus, loadAuthJson, requestJson, saveCredentials } from './auth'
+import type {
+  SealosStatus,
+  WorkspaceDetails,
+  WorkspaceInfo,
+  WorkspaceMember
+} from '../../shared/types'
+import {
+  getStatus,
+  loadAuthJson,
+  requestJson,
+  saveCredentials,
+  setCurrentWorkspaceName
+} from './auth'
 
 /**
  * 工作空间列表与切换，与 Sealos desktop 前端同一套 API：
@@ -117,4 +128,110 @@ export async function switchWorkspace(uid: string): Promise<SealosStatus> {
     teamName: target.teamName
   })
   return getStatus()
+}
+
+function apiError(fallback: string, status: number, body: unknown): Error {
+  const message = (body as { message?: string })?.message
+  return new Error(`${fallback}（HTTP ${status}${message ? `：${message}` : ''}）`)
+}
+
+function isOwner(role: unknown): boolean {
+  return role === 0 || String(role).toLowerCase() === 'owner'
+}
+
+function isManagerOrOwner(role: unknown): boolean {
+  return isOwner(role) || role === 1 || String(role).toLowerCase() === 'manager'
+}
+
+interface RawTeamUser {
+  crUid?: string
+  nickname?: string
+  avatarUrl?: string
+  role?: unknown
+}
+
+export async function getWorkspaceDetails(uid: string): Promise<WorkspaceDetails> {
+  const session = requireSession()
+  const resp = await requestJson(`${session.region}/api/auth/namespace/details`, {
+    method: 'POST',
+    token: session.regionalToken,
+    json: { ns_uid: uid }
+  })
+  if (resp.status !== 200) throw apiError('获取工作空间详情失败', resp.status, resp.body)
+  const data = (resp.body as { data?: { users?: RawTeamUser[]; namespace?: RawNamespace } })?.data
+  const myRole = (data?.namespace as { role?: unknown } | undefined)?.role
+  const members: WorkspaceMember[] = (data?.users ?? [])
+    .filter((u): u is RawTeamUser & { crUid: string } => !!u.crUid)
+    .map((u) => ({
+      crUid: u.crUid,
+      nickname: u.nickname || '未命名用户',
+      avatarUrl: u.avatarUrl || undefined,
+      roleLabel: ROLE_LABELS[String(u.role).toLowerCase()] ?? '成员'
+    }))
+  return {
+    uid,
+    teamName: data?.namespace?.teamName,
+    isPrivate: isPrivateNs(data?.namespace?.nstype),
+    myRoleLabel: ROLE_LABELS[String(myRole).toLowerCase()],
+    canRename: isOwner(myRole),
+    canInvite: isManagerOrOwner(myRole),
+    members
+  }
+}
+
+export async function renameWorkspace(uid: string, teamName: string): Promise<SealosStatus> {
+  const name = teamName.trim()
+  if (!name) throw new Error('工作空间名称不能为空')
+  const session = requireSession()
+  const resp = await requestJson(`${session.region}/api/auth/namespace/rename`, {
+    method: 'POST',
+    token: session.regionalToken,
+    json: { ns_uid: uid, teamName: name }
+  })
+  if (resp.status !== 200) throw apiError('重命名失败（仅拥有者可重命名）', resp.status, resp.body)
+  if (session.currentUid === uid) await setCurrentWorkspaceName(name)
+  return getStatus()
+}
+
+export async function createWorkspace(teamName: string): Promise<WorkspaceInfo> {
+  const name = teamName.trim()
+  if (!name) throw new Error('工作空间名称不能为空')
+  const session = requireSession()
+  // 服务端要创建 k8s 资源，实测可能超过 30s
+  const resp = await requestJson(`${session.region}/api/auth/namespace/create`, {
+    method: 'POST',
+    token: session.regionalToken,
+    json: { teamName: name },
+    timeoutMs: 90_000
+  })
+  if (resp.status === 409) throw new Error('同名工作空间已存在')
+  if (resp.status !== 200) throw apiError('新建工作空间失败', resp.status, resp.body)
+  const ns = (resp.body as { data?: { namespace?: RawNamespace } })?.data?.namespace
+  if (!ns?.uid || !ns.id) throw new Error('新建工作空间返回数据异常')
+  return {
+    uid: ns.uid,
+    id: ns.id,
+    teamName: ns.teamName,
+    isPrivate: isPrivateNs(ns.nstype),
+    roleLabel: ROLE_LABELS[String(ns.role).toLowerCase()],
+    current: false
+  }
+}
+
+const INVITE_ROLE: Record<'manager' | 'developer', number> = { manager: 1, developer: 2 }
+
+export async function getInviteLink(uid: string, role: 'manager' | 'developer'): Promise<string> {
+  const session = requireSession()
+  const resp = await requestJson(`${session.region}/api/auth/namespace/getInviteCode`, {
+    method: 'POST',
+    token: session.regionalToken,
+    json: { ns_uid: uid, role: INVITE_ROLE[role] }
+  })
+  if (resp.status !== 200) {
+    throw apiError('生成邀请链接失败（需要拥有者或管理员权限）', resp.status, resp.body)
+  }
+  const code = (resp.body as { data?: { code?: string } })?.data?.code
+  if (!code) throw new Error('生成邀请链接失败：响应缺少 code')
+  // 与 desktop 前端一致的邀请落地页
+  return `${session.region}/WorkspaceInvite/?code=${encodeURIComponent(code)}`
 }

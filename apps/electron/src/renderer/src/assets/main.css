@@ -1124,6 +1124,249 @@
   }
 }
 
+/* Lovable 式工作空间面板 */
+.ws-panel {
+  max-height: min(560px, calc(100vh - 140px));
+  padding-bottom: 0;
+}
+
+.wsp-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px 8px;
+}
+
+.wsp-avatar-lg {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  font-size: 15px;
+}
+
+.wsp-head-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.wsp-name {
+  font-size: 14.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wsp-sub {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  margin-top: 1px;
+}
+
+.wsp-actions {
+  display: flex;
+  gap: 6px;
+  padding: 0 6px 8px;
+}
+
+.wsp-action {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  background: var(--bg-primary);
+  box-shadow: inset 0 0 0 0.5px var(--ring);
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.wsp-action:hover {
+  background: var(--hover);
+}
+
+.wsp-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 8px;
+}
+
+.wsp-inline-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.wsp-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--bg-primary);
+  box-shadow: inset 0 0 0 0.5px var(--ring);
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  outline: none;
+  user-select: text;
+}
+
+.wsp-input:focus {
+  box-shadow: inset 0 0 0 1px var(--sun-lo);
+}
+
+.wsp-mini-btn {
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--nav-active);
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.wsp-mini-btn:hover:not(:disabled) {
+  background: oklch(0 0 0 / 0.12);
+}
+
+.wsp-mini-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.wsp-link {
+  margin: 0 6px 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--bg-primary);
+  box-shadow: inset 0 0 0 0.5px var(--ring);
+  font-size: 10.5px;
+  line-height: 1.5;
+  word-break: break-all;
+  user-select: text;
+  color: var(--text-secondary);
+}
+
+.wsp-notice {
+  margin: 0 6px 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(240, 190, 78, 0.14);
+  font-size: 12px;
+  color: #6d4c07;
+}
+
+.wsp-section-label {
+  padding: 6px 10px 4px;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+}
+
+.wsp-head + .wsp-section-label,
+.wsp-actions + .wsp-section-label {
+  border-top: 1px solid var(--border);
+}
+
+.wsp-members {
+  max-height: 132px;
+  overflow-y: auto;
+  padding-bottom: 4px;
+}
+
+.wsp-member {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px;
+}
+
+.wsp-member-img {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.wsp-member-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+
+.wsp-member-role {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.wsp-new {
+  color: var(--text-secondary);
+}
+
+.wsp-plus {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.wsp-upgrade {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 6px;
+  padding: 9px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.wsp-upgrade-text {
+  flex: 1;
+}
+
+.wsp-upgrade-btn {
+  border: none;
+  border-radius: 999px;
+  height: 26px;
+  padding: 0 12px;
+  background: var(--accent-gold);
+  color: #5b4104;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.wsp-upgrade-btn:hover {
+  background: #e9b23e;
+}
+
 /* ── 模板页（布局对齐 sealos.io 应用商店，浅色适配）── */
 
 .tpl-toolbar {

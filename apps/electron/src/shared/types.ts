@@ -87,6 +87,25 @@ export interface WorkspaceInfo {
   current: boolean
 }
 
+export interface WorkspaceMember {
+  crUid: string
+  nickname: string
+  avatarUrl?: string
+  roleLabel: string
+}
+
+export interface WorkspaceDetails {
+  uid: string
+  teamName?: string
+  isPrivate: boolean
+  myRoleLabel?: string
+  /** 仅 Owner */
+  canRename: boolean
+  /** Owner 或 Manager */
+  canInvite: boolean
+  members: WorkspaceMember[]
+}
+
 export interface TemplateInfo {
   name: string
   slug: string
@@ -130,6 +149,11 @@ export interface HeliosApi {
   getTemplates(): Promise<TemplateCatalog>
   listWorkspaces(): Promise<WorkspaceInfo[]>
   switchWorkspace(uid: string): Promise<SealosStatus>
+  getWorkspaceDetails(uid: string): Promise<WorkspaceDetails>
+  renameWorkspace(uid: string, teamName: string): Promise<SealosStatus>
+  createWorkspace(teamName: string): Promise<WorkspaceInfo>
+  getInviteLink(uid: string, role: 'manager' | 'developer'): Promise<string>
   openExternal(url: string): Promise<void>
+  copyText(text: string): Promise<void>
   onLoginEvent(listener: (event: LoginEvent) => void): () => void
 }

@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, clipboard, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -13,7 +13,14 @@ import {
 } from './sealos/auth'
 import { fetchResources } from './sealos/resources'
 import { fetchTemplates } from './sealos/templates'
-import { listWorkspaces, switchWorkspace } from './sealos/workspaces'
+import {
+  createWorkspace,
+  getInviteLink,
+  getWorkspaceDetails,
+  listWorkspaces,
+  renameWorkspace,
+  switchWorkspace
+} from './sealos/workspaces'
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -73,10 +80,23 @@ function registerIpc(): void {
   ipcMain.handle('sealos:templates', () => fetchTemplates())
   ipcMain.handle('sealos:workspaces', () => listWorkspaces())
   ipcMain.handle('sealos:workspace-switch', (_event, uid: string) => switchWorkspace(uid))
+  ipcMain.handle('sealos:workspace-details', (_event, uid: string) => getWorkspaceDetails(uid))
+  ipcMain.handle('sealos:workspace-rename', (_event, uid: string, teamName: string) =>
+    renameWorkspace(uid, teamName)
+  )
+  ipcMain.handle('sealos:workspace-create', (_event, teamName: string) => createWorkspace(teamName))
+  ipcMain.handle('sealos:workspace-invite', (_event, uid: string, role: 'manager' | 'developer') =>
+    getInviteLink(uid, role)
+  )
 
   ipcMain.handle('sealos:open-external', (_event, url: string) => {
     if (/^https?:\/\//.test(url)) return shell.openExternal(url)
     return undefined
+  })
+
+  // 渲染进程的 navigator.clipboard 依赖窗口聚焦，桌面场景统一走主进程剪贴板
+  ipcMain.handle('helios:copy-text', (_event, text: string) => {
+    clipboard.writeText(text)
   })
 }
 

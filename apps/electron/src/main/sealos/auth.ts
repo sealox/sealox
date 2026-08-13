@@ -75,6 +75,16 @@ export async function logout(): Promise<void> {
   await fs.rm(AUTH_PATH, { force: true })
 }
 
+/** 当前工作空间被重命名后同步 auth.json 里的展示名 */
+export async function setCurrentWorkspaceName(teamName: string): Promise<void> {
+  const auth = loadAuthJson()
+  const workspace = auth.current_workspace as { teamName?: string } | undefined
+  if (!workspace) return
+  workspace.teamName = teamName
+  await fs.writeFile(AUTH_PATH, JSON.stringify(auth, null, 2), { mode: 0o600 })
+  await fs.chmod(AUTH_PATH, 0o600)
+}
+
 interface HttpResult {
   status: number
   body: unknown
@@ -92,7 +102,7 @@ async function postForm(url: string, form: Record<string, string>): Promise<Http
 
 export async function requestJson(
   url: string,
-  init: { method?: string; token?: string; json?: unknown } = {}
+  init: { method?: string; token?: string; json?: unknown; timeoutMs?: number } = {}
 ): Promise<HttpResult> {
   const headers: Record<string, string> = {}
   if (init.token) headers.Authorization = init.token
@@ -101,7 +111,7 @@ export async function requestJson(
     method: init.method ?? 'GET',
     headers,
     body: init.json !== undefined ? JSON.stringify(init.json) : undefined,
-    signal: AbortSignal.timeout(30_000)
+    signal: AbortSignal.timeout(init.timeoutMs ?? 30_000)
   })
   return { status: resp.status, body: await parseBody(resp) }
 }

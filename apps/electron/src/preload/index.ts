@@ -7,6 +7,7 @@ import type {
   ResourceSnapshot,
   SealosStatus,
   TemplateCatalog,
+  WorkspaceDetails,
   WorkspaceInfo
 } from '../shared/types'
 
@@ -23,7 +24,16 @@ const helios: HeliosApi = {
   listWorkspaces: (): Promise<WorkspaceInfo[]> => ipcRenderer.invoke('sealos:workspaces'),
   switchWorkspace: (uid: string): Promise<SealosStatus> =>
     ipcRenderer.invoke('sealos:workspace-switch', uid),
+  getWorkspaceDetails: (uid: string): Promise<WorkspaceDetails> =>
+    ipcRenderer.invoke('sealos:workspace-details', uid),
+  renameWorkspace: (uid: string, teamName: string): Promise<SealosStatus> =>
+    ipcRenderer.invoke('sealos:workspace-rename', uid, teamName),
+  createWorkspace: (teamName: string): Promise<WorkspaceInfo> =>
+    ipcRenderer.invoke('sealos:workspace-create', teamName),
+  getInviteLink: (uid: string, role: 'manager' | 'developer'): Promise<string> =>
+    ipcRenderer.invoke('sealos:workspace-invite', uid, role),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('sealos:open-external', url),
+  copyText: (text: string): Promise<void> => ipcRenderer.invoke('helios:copy-text', text),
   onLoginEvent: (listener: (event: LoginEvent) => void): (() => void) => {
     const wrapped = (_: Electron.IpcRendererEvent, event: LoginEvent): void => listener(event)
     ipcRenderer.on('sealos:login-event', wrapped)
