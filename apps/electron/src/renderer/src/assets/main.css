@@ -995,6 +995,323 @@
   font-size: 15px;
 }
 
+/* ── 模板页（布局对齐 sealos.io 应用商店，浅色适配）── */
+
+.tpl-toolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.tpl-search {
+  flex: 1;
+  max-width: 360px;
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 10px;
+  background: var(--bg-card);
+  box-shadow: inset 0 0 0 0.5px var(--ring);
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  user-select: text;
+}
+
+.tpl-search:focus {
+  box-shadow: inset 0 0 0 1px var(--sun-lo);
+}
+
+.tpl-search::placeholder {
+  color: var(--text-tertiary);
+}
+
+.tpl-sort {
+  margin-left: auto;
+  height: 36px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 10px;
+  background: var(--bg-card);
+  box-shadow: inset 0 0 0 0.5px var(--ring);
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  cursor: pointer;
+}
+
+.tpl-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.tpl-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.tpl-cat:hover {
+  background: var(--hover);
+}
+
+.tpl-cat.active {
+  background: var(--nav-active);
+  color: var(--text-primary);
+  font-weight: 550;
+}
+
+.tpl-cat-count {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.tpl-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.tpl-clear {
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.tpl-clear:hover {
+  text-decoration: underline;
+}
+
+.tpl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.tpl-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-card);
+  border-radius: 16px;
+  box-shadow:
+    inset 0 0 0 0.5px var(--ring),
+    0 1px 2px rgba(0, 0, 0, 0.03);
+  transition:
+    transform 0.25s,
+    box-shadow 0.25s;
+}
+
+.tpl-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 0 0 0.5px var(--ring),
+    0 10px 24px -8px rgba(0, 0, 0, 0.12);
+}
+
+/* 截图斜置在浅色底上，复刻官网卡片的观感 */
+.tpl-shot {
+  position: relative;
+  height: 118px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f6f4ee, #efe8d8);
+}
+
+.tpl-shot > img {
+  position: absolute;
+  top: 14px;
+  left: -3%;
+  width: 106%;
+  height: 150px;
+  object-fit: cover;
+  object-position: top;
+  border-radius: 6px;
+  transform: rotate(-5deg);
+  /* 细描边让白底截图在浅色背景上仍有“纸片”轮廓 */
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.1),
+    0 14px 28px rgba(0, 0, 0, 0.22);
+  transition: transform 0.3s;
+}
+
+.tpl-card:hover .tpl-shot > img {
+  transform: rotate(-3.5deg) translateY(-2px);
+}
+
+.tpl-shot-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.tpl-shot-fallback img {
+  border-radius: 10px;
+}
+
+.tpl-icon-fallback {
+  display: grid;
+  place-items: center;
+  background: var(--panel-2);
+  border-radius: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.tpl-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 16px;
+}
+
+.tpl-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.tpl-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: inset 0 0 0 0.5px var(--ring);
+  overflow: hidden;
+}
+
+.tpl-icon img {
+  object-fit: contain;
+}
+
+.tpl-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 550;
+  color: var(--text-primary);
+}
+
+.tpl-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 38px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+  user-select: text;
+}
+
+.tpl-deploy {
+  margin-top: auto;
+  height: 34px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent-gold);
+  color: #5b4104;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    transform 0.1s;
+}
+
+.tpl-deploy:hover {
+  background: #e9b23e;
+}
+
+.tpl-deploy:active {
+  transform: scale(0.98);
+}
+
+.tpl-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 28px;
+  font-size: 13px;
+}
+
+.tpl-page-btn,
+.tpl-page-num {
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--text-secondary);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.tpl-page-btn {
+  padding: 7px 10px;
+}
+
+.tpl-page-num {
+  width: 32px;
+  height: 32px;
+}
+
+.tpl-page-btn:hover:not(:disabled),
+.tpl-page-num:hover {
+  background: var(--hover);
+}
+
+.tpl-page-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.tpl-page-num.active {
+  background: var(--nav-active);
+  color: var(--text-primary);
+  font-weight: 550;
+}
+
+.tpl-page-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tpl-page-gap {
+  color: var(--text-tertiary);
+  padding: 0 2px;
+}
+
 @media (max-width: 860px) {
   .login {
     grid-template-columns: 1fr;

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import sealosLogo from '../assets/sealos-logo-gold.svg'
+import TemplatesTab from './TemplatesTab'
 import type {
   AppStatus,
   AppWorkload,
@@ -15,7 +16,7 @@ interface Props {
   onLogout: () => Promise<void>
 }
 
-type Tab = 'home' | 'apps' | 'databases' | 'storage' | 'account'
+type Tab = 'home' | 'templates' | 'apps' | 'databases' | 'storage' | 'account'
 
 const REFRESH_INTERVAL_MS = 15_000
 
@@ -75,6 +76,15 @@ function HomeIcon({ size }: IconProps): React.JSX.Element {
     <svg {...iconAttrs(size)}>
       <path d="M4.5 10.3 12 4.5l7.5 5.8v7.2a1.5 1.5 0 0 1-1.5 1.5H6a1.5 1.5 0 0 1-1.5-1.5v-7.2Z" />
       <path d="M9.5 19v-5.2h5V19" />
+    </svg>
+  )
+}
+
+function TemplatesIcon({ size }: IconProps): React.JSX.Element {
+  return (
+    <svg {...iconAttrs(size)}>
+      <rect x="4" y="4.5" width="16" height="15" rx="2" />
+      <path d="M4 9.5h16M10 9.5V19.5" />
     </svg>
   )
 }
@@ -576,12 +586,14 @@ function AccountTab({
 
 const NAV: Array<{ id: Tab; label: string; icon: React.JSX.Element }> = [
   { id: 'home', label: '首页', icon: <HomeIcon /> },
+  { id: 'templates', label: '模板', icon: <TemplatesIcon /> },
   { id: 'apps', label: '应用', icon: <AppsIcon /> },
   { id: 'databases', label: '数据库', icon: <DatabaseIcon /> },
   { id: 'storage', label: '存储', icon: <StorageIcon /> }
 ]
 
 const TAB_TITLE: Record<Exclude<Tab, 'home'>, string> = {
+  templates: '模板',
   apps: '应用',
   databases: '数据库',
   storage: '存储',
@@ -729,27 +741,33 @@ function ResourcesScreen({ status, onLogout }: Props): React.JSX.Element {
           <div className="page">
             <header className="page-head">
               <h1>{TAB_TITLE[tab]}</h1>
-              {snapshot && (
+              {tab !== 'templates' && snapshot && (
                 <span className="hint">
                   更新于 {new Date(snapshot.fetchedAt).toLocaleTimeString()}
                 </span>
               )}
             </header>
             <div className="page-body">
-              {error && <div className="error">{error}</div>}
-              {snapshot?.warnings.map((w) => (
-                <div key={w} className="warning">
-                  {w}
-                </div>
-              ))}
+              {tab === 'templates' ? (
+                <TemplatesTab />
+              ) : (
+                <>
+                  {error && <div className="error">{error}</div>}
+                  {snapshot?.warnings.map((w) => (
+                    <div key={w} className="warning">
+                      {w}
+                    </div>
+                  ))}
 
-              {!snapshot && !error && <div className="placeholder">正在读取工作空间…</div>}
+                  {!snapshot && !error && <div className="placeholder">正在读取工作空间…</div>}
 
-              {snapshot && tab === 'apps' && <AppsTab snapshot={snapshot} />}
-              {snapshot && tab === 'databases' && <DatabasesTab snapshot={snapshot} />}
-              {snapshot && tab === 'storage' && <StorageTab snapshot={snapshot} />}
-              {tab === 'account' && (
-                <AccountTab status={status} snapshot={snapshot} onLogout={onLogout} />
+                  {snapshot && tab === 'apps' && <AppsTab snapshot={snapshot} />}
+                  {snapshot && tab === 'databases' && <DatabasesTab snapshot={snapshot} />}
+                  {snapshot && tab === 'storage' && <StorageTab snapshot={snapshot} />}
+                  {tab === 'account' && (
+                    <AccountTab status={status} snapshot={snapshot} onLogout={onLogout} />
+                  )}
+                </>
               )}
             </div>
           </div>

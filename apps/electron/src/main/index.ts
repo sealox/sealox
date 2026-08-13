@@ -12,6 +12,7 @@ import {
   startDeviceLogin
 } from './sealos/auth'
 import { fetchResources } from './sealos/resources'
+import { fetchTemplates } from './sealos/templates'
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -68,6 +69,7 @@ function registerIpc(): void {
   ipcMain.handle('sealos:save-kubeconfig', (_event, text: string) => saveKubeconfigText(text))
   ipcMain.handle('sealos:logout', () => logout())
   ipcMain.handle('sealos:resources', () => fetchResources())
+  ipcMain.handle('sealos:templates', () => fetchTemplates())
 
   ipcMain.handle('sealos:open-external', (_event, url: string) => {
     if (/^https?:\/\//.test(url)) return shell.openExternal(url)
@@ -77,11 +79,6 @@ function registerIpc(): void {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.helios.app')
-
-  // dev 模式下 dock 显示的是 Electron 默认图标；打包版由 electron-builder 用 build/icon.png 生成
-  if (process.platform === 'darwin') {
-    app.dock?.setIcon(icon)
-  }
 
   // Packaged builds get the icon from electron-builder; dev needs it set here.
   if (process.platform === 'darwin') {

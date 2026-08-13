@@ -5,7 +5,8 @@ import type {
   LoginEvent,
   RegionOption,
   ResourceSnapshot,
-  SealosStatus
+  SealosStatus,
+  TemplateCatalog
 } from '../shared/types'
 
 const helios: HeliosApi = {
@@ -17,6 +18,7 @@ const helios: HeliosApi = {
     ipcRenderer.invoke('sealos:save-kubeconfig', text),
   logout: (): Promise<void> => ipcRenderer.invoke('sealos:logout'),
   getResources: (): Promise<ResourceSnapshot> => ipcRenderer.invoke('sealos:resources'),
+  getTemplates: (): Promise<TemplateCatalog> => ipcRenderer.invoke('sealos:templates'),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('sealos:open-external', url),
   onLoginEvent: (listener: (event: LoginEvent) => void): (() => void) => {
     const wrapped = (_: Electron.IpcRendererEvent, event: LoginEvent): void => listener(event)

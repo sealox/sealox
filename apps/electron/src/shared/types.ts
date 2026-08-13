@@ -75,6 +75,33 @@ export interface ResourceSnapshot {
   warnings: string[]
 }
 
+export interface TemplateInfo {
+  name: string
+  slug: string
+  /** Template API 的部署标识（templateName || slug） */
+  templateName: string
+  /** 中文优先，缺失时回退英文 */
+  description: string
+  /** 绝对 URL */
+  icon?: string
+  /** 首张截图，绝对 URL */
+  screenshot?: string
+  category: string
+  tags: string[]
+  github?: string
+  website?: string
+  deployCount?: number
+  /** sealos.io 商店详情页 */
+  detailUrl: string
+  /** Sealos 控制台的模板部署页（用户所在 region） */
+  deployUrl: string
+}
+
+export interface TemplateCatalog {
+  fetchedAt: string
+  templates: TemplateInfo[]
+}
+
 export interface RegionOption {
   url: string
   label: string
@@ -88,6 +115,7 @@ export interface HeliosApi {
   saveKubeconfig(text: string): Promise<SealosStatus>
   logout(): Promise<void>
   getResources(): Promise<ResourceSnapshot>
+  getTemplates(): Promise<TemplateCatalog>
   openExternal(url: string): Promise<void>
   onLoginEvent(listener: (event: LoginEvent) => void): () => void
 }
