@@ -1,5 +1,5 @@
 import * as k8s from '@kubernetes/client-node'
-import type { V1Ingress, V1Pod } from '@kubernetes/client-node'
+import type { V1Deployment, V1Ingress, V1Pod, V1StatefulSet } from '@kubernetes/client-node'
 import type {
   AppStatus,
   AppWorkload,
@@ -10,14 +10,16 @@ import type {
   QuotaItem,
   ResourceSnapshot
 } from '../../shared/types'
-import { KUBECONFIG_PATH, readKubeconfigText } from './auth'
+import { KUBECONFIG_PATH } from './auth'
 
 /** 项目（模板实例）归属标签 */
-const PROJECT_LABEL = 'cloud.sealos.io/deploy-on-sealos'
+export const PROJECT_LABEL = 'cloud.sealos.io/deploy-on-sealos'
 /** App Launchpad 管理的应用标签 */
-const APP_LABEL = 'cloud.sealos.io/app-deploy-manager'
+export const APP_LABEL = 'cloud.sealos.io/app-deploy-manager'
+/** 项目备注名注解 */
+export const DISPLAY_NAME_KEY = 'cloud.sealos.io/deploy-on-sealos-displayName'
 
-const STUCK_REASONS = new Set([
+export const STUCK_REASONS = new Set([
   'CrashLoopBackOff',
   'ImagePullBackOff',
   'ErrImagePull',
@@ -27,7 +29,7 @@ const STUCK_REASONS = new Set([
   'OOMKilled'
 ])
 
-function podInfo(pod: V1Pod): PodInfo {
+export function podInfo(pod: V1Pod): PodInfo {
   const statuses = pod.status?.containerStatuses ?? []
   const reason = statuses
     .map((s) => s.state?.waiting?.reason ?? s.state?.terminated?.reason)
@@ -49,22 +51,28 @@ function appStatus(replicas: number, ready: number, pods: PodInfo[]): AppStatus 
 
 // Pods are matched to their workload via ownerReferences: Deployment pods are
 // owned by a ReplicaSet named `<deploy>-<hash>`, StatefulSet pods directly.
+export function matchPodsToWorkload(
+  pods: V1Pod[],
+  kind: 'Deployment' | 'StatefulSet',
+  name: string
+): V1Pod[] {
+  return pods.filter((pod) =>
+    (pod.metadata?.ownerReferences ?? []).some((ref) => {
+      if (kind === 'StatefulSet') return ref.kind === 'StatefulSet' && ref.name === name
+      return ref.kind === 'ReplicaSet' && new RegExp(`^${name}-[a-z0-9]+$`).test(ref.name)
+    })
+  )
+}
+
 function podsForWorkload(
   pods: V1Pod[],
   kind: 'Deployment' | 'StatefulSet',
   name: string
 ): PodInfo[] {
-  return pods
-    .filter((pod) =>
-      (pod.metadata?.ownerReferences ?? []).some((ref) => {
-        if (kind === 'StatefulSet') return ref.kind === 'StatefulSet' && ref.name === name
-        return ref.kind === 'ReplicaSet' && new RegExp(`^${name}-[a-z0-9]+$`).test(ref.name)
-      })
-    )
-    .map(podInfo)
+  return matchPodsToWorkload(pods, kind, name).map(podInfo)
 }
 
-function urlsForApp(ingresses: V1Ingress[], appName: string): string[] {
+export function urlsForApp(ingresses: V1Ingress[], appName: string): string[] {
   const urls = new Set<string>()
   for (const ing of ingresses) {
     const labels = ing.metadata?.labels ?? {}
@@ -80,17 +88,94 @@ function urlsForApp(ingresses: V1Ingress[], appName: string): string[] {
   return [...urls]
 }
 
-interface KubeBlocksCluster {
-  metadata?: { name?: string; labels?: Record<string, string> }
-  spec?: { clusterDefinitionRef?: string; clusterVersionRef?: string }
+export function workloadFromDeployment(
+  deploy: V1Deployment,
+  allPods: V1Pod[],
+  ingresses: V1Ingress[]
+): AppWorkload {
+  const name = deploy.metadata?.name ?? ''
+  const replicas = deploy.spec?.replicas ?? 0
+  const ready = deploy.status?.readyReplicas ?? 0
+  const workloadPods = podsForWorkload(allPods, 'Deployment', name)
+  return {
+    name,
+    kind: 'Deployment',
+    replicas,
+    readyReplicas: ready,
+    status: appStatus(replicas, ready, workloadPods),
+    images: (deploy.spec?.template?.spec?.containers ?? []).map((c) => c.image ?? ''),
+    urls: urlsForApp(ingresses, name),
+    project: deploy.metadata?.labels?.[PROJECT_LABEL],
+    launchpad: deploy.metadata?.labels?.[APP_LABEL] !== undefined,
+    pods: workloadPods
+  }
+}
+
+/** KubeBlocks 托管的 StatefulSet 属于数据库，不算应用，返回 null */
+export function workloadFromStatefulSet(
+  sts: V1StatefulSet,
+  allPods: V1Pod[],
+  ingresses: V1Ingress[]
+): AppWorkload | null {
+  const managedBy = sts.metadata?.labels?.['app.kubernetes.io/managed-by']
+  if (managedBy === 'kubeblocks') return null
+  const name = sts.metadata?.name ?? ''
+  const replicas = sts.spec?.replicas ?? 0
+  const ready = sts.status?.readyReplicas ?? 0
+  const workloadPods = podsForWorkload(allPods, 'StatefulSet', name)
+  return {
+    name,
+    kind: 'StatefulSet',
+    replicas,
+    readyReplicas: ready,
+    status: appStatus(replicas, ready, workloadPods),
+    images: (sts.spec?.template?.spec?.containers ?? []).map((c) => c.image ?? ''),
+    urls: urlsForApp(ingresses, name),
+    project: sts.metadata?.labels?.[PROJECT_LABEL],
+    launchpad: sts.metadata?.labels?.[APP_LABEL] !== undefined,
+    pods: workloadPods
+  }
+}
+
+export interface KubeBlocksCluster {
+  metadata?: {
+    name?: string
+    labels?: Record<string, string>
+    creationTimestamp?: string
+  }
+  spec?: {
+    clusterDefinitionRef?: string
+    clusterVersionRef?: string
+    componentSpecs?: Array<{
+      resources?: { limits?: { cpu?: string; memory?: string } }
+      volumeClaimTemplates?: Array<{
+        spec?: { resources?: { requests?: { storage?: string } } }
+      }>
+    }>
+  }
   status?: { phase?: string }
 }
 
-async function listDatabases(
+export function databaseFromCluster(cluster: KubeBlocksCluster): DatabaseInfo {
+  return {
+    name: cluster.metadata?.name ?? '',
+    engine:
+      cluster.spec?.clusterDefinitionRef ??
+      cluster.metadata?.labels?.['clusterdefinition.kubeblocks.io/name'],
+    version:
+      cluster.spec?.clusterVersionRef ??
+      cluster.metadata?.labels?.['clusterversion.kubeblocks.io/name'],
+    phase: cluster.status?.phase ?? 'Unknown',
+    project: cluster.metadata?.labels?.[PROJECT_LABEL]
+  }
+}
+
+/** 依次尝试 KubeBlocks 的 v1alpha1/v1 列表，两个版本都缺时返回 null */
+export async function listKubeBlocksClusters(
   kc: k8s.KubeConfig,
   namespace: string,
-  warnings: string[]
-): Promise<DatabaseInfo[]> {
+  labelSelector?: string
+): Promise<KubeBlocksCluster[] | null> {
   const custom = kc.makeApiClient(k8s.CustomObjectsApi)
   for (const version of ['v1alpha1', 'v1']) {
     try {
@@ -98,27 +183,31 @@ async function listDatabases(
         group: 'apps.kubeblocks.io',
         version,
         namespace,
-        plural: 'clusters'
+        plural: 'clusters',
+        labelSelector
       })) as { items?: KubeBlocksCluster[] }
-      return (resp.items ?? []).map((cluster) => ({
-        name: cluster.metadata?.name ?? '',
-        engine:
-          cluster.spec?.clusterDefinitionRef ??
-          cluster.metadata?.labels?.['clusterdefinition.kubeblocks.io/name'],
-        version:
-          cluster.spec?.clusterVersionRef ??
-          cluster.metadata?.labels?.['clusterversion.kubeblocks.io/name'],
-        phase: cluster.status?.phase ?? 'Unknown',
-        project: cluster.metadata?.labels?.[PROJECT_LABEL]
-      }))
+      return resp.items ?? []
     } catch (err) {
       const status = (err as { code?: number }).code
       if (status === 404) continue
-      warnings.push(`数据库列表读取失败：${err instanceof Error ? err.message : String(err)}`)
-      return []
+      throw err
     }
   }
-  return []
+  return null
+}
+
+async function listDatabases(
+  kc: k8s.KubeConfig,
+  namespace: string,
+  warnings: string[]
+): Promise<DatabaseInfo[]> {
+  try {
+    const clusters = await listKubeBlocksClusters(kc, namespace)
+    return (clusters ?? []).map(databaseFromCluster)
+  } catch (err) {
+    warnings.push(`数据库列表读取失败：${err instanceof Error ? err.message : String(err)}`)
+    return []
+  }
 }
 
 interface ObjectStorageBucket {
@@ -161,35 +250,62 @@ async function listBuckets(
   }
 }
 
-async function listProjects(regionDomain: string, warnings: string[]): Promise<ProjectInfo[]> {
+/** 模板实例 CR（app.sealos.io/v1 instances，命名空间级） */
+export interface InstanceCR {
+  metadata?: {
+    name?: string
+    creationTimestamp?: string
+    labels?: Record<string, string>
+    annotations?: Record<string, string>
+  }
+  spec?: {
+    title?: string
+    templateType?: string
+    author?: string
+    description?: string
+    gitRepo?: string
+    url?: string
+    icon?: string
+  }
+}
+
+export function instanceDisplayName(instance: InstanceCR): string | undefined {
+  return (
+    instance.metadata?.annotations?.[DISPLAY_NAME_KEY] ??
+    instance.metadata?.labels?.[DISPLAY_NAME_KEY]
+  )
+}
+
+// 与 Template 前端同源：实例即命名空间内的 instances CR，直读省掉对
+// template.{region} 服务的依赖（该 API 内部也只是转发这份列表）。
+async function listProjects(
+  kc: k8s.KubeConfig,
+  namespace: string,
+  warnings: string[]
+): Promise<ProjectInfo[]> {
+  const custom = kc.makeApiClient(k8s.CustomObjectsApi)
   try {
-    const resp = await fetch(`https://template.${regionDomain}/api/instance/list`, {
-      headers: { Authorization: encodeURIComponent(readKubeconfigText()) },
-      signal: AbortSignal.timeout(30_000)
-    })
-    if (!resp.ok) {
-      warnings.push(`模板实例列表读取失败（HTTP ${resp.status}）`)
-      return []
-    }
-    const body = (await resp.json()) as { data?: unknown }
-    let items = body?.data ?? []
-    if (!Array.isArray(items)) {
-      items = (items as { items?: unknown[] })?.items ?? []
-    }
-    return (
-      items as Array<{
-        metadata?: { name?: string; creationTimestamp?: string }
-        spec?: { title?: string; templateType?: string }
-      }>
-    ).map((item) => ({
+    const resp = (await custom.listNamespacedCustomObject({
+      group: 'app.sealos.io',
+      version: 'v1',
+      namespace,
+      plural: 'instances'
+    })) as { items?: InstanceCR[] }
+    return (resp.items ?? []).map((item) => ({
       name: item.metadata?.name ?? '',
+      displayName: instanceDisplayName(item),
+      icon: item.spec?.icon,
       template: item.spec?.title ?? item.spec?.templateType,
       createdAt: item.metadata?.creationTimestamp
     }))
   } catch (err) {
-    warnings.push(
-      `项目（模板实例）列表读取失败：${err instanceof Error ? err.message : String(err)}`
-    )
+    const status = (err as { code?: number }).code
+    // 404 = 该集群没有 Template 模块，视为没有项目而非错误。
+    if (status !== 404) {
+      warnings.push(
+        `项目（模板实例）列表读取失败：${err instanceof Error ? err.message : String(err)}`
+      )
+    }
     return []
   }
 }
@@ -290,7 +406,7 @@ export async function fetchResources(): Promise<ResourceSnapshot> {
       core.listNamespacedPod({ namespace }),
       networking.listNamespacedIngress({ namespace }),
       listDatabases(kc, namespace, warnings),
-      listProjects(regionDomain, warnings),
+      listProjects(kc, namespace, warnings),
       listBuckets(kc, namespace, warnings),
       listQuota(core, namespace, warnings)
     ])
@@ -300,45 +416,12 @@ export async function fetchResources(): Promise<ResourceSnapshot> {
   const workloads: AppWorkload[] = []
 
   for (const deploy of deployments.items ?? []) {
-    const name = deploy.metadata?.name ?? ''
-    const replicas = deploy.spec?.replicas ?? 0
-    const ready = deploy.status?.readyReplicas ?? 0
-    const workloadPods = podsForWorkload(podItems, 'Deployment', name)
-    workloads.push({
-      name,
-      kind: 'Deployment',
-      replicas,
-      readyReplicas: ready,
-      status: appStatus(replicas, ready, workloadPods),
-      images: (deploy.spec?.template?.spec?.containers ?? []).map((c) => c.image ?? ''),
-      urls: urlsForApp(ingressItems, name),
-      project: deploy.metadata?.labels?.[PROJECT_LABEL],
-      launchpad: deploy.metadata?.labels?.[APP_LABEL] !== undefined,
-      pods: workloadPods
-    })
+    workloads.push(workloadFromDeployment(deploy, podItems, ingressItems))
   }
 
   for (const sts of statefulSets.items ?? []) {
-    const name = sts.metadata?.name ?? ''
-    // KubeBlocks manages database StatefulSets; those surface in the
-    // databases section instead of the apps section.
-    const managedBy = sts.metadata?.labels?.['app.kubernetes.io/managed-by']
-    if (managedBy === 'kubeblocks') continue
-    const replicas = sts.spec?.replicas ?? 0
-    const ready = sts.status?.readyReplicas ?? 0
-    const workloadPods = podsForWorkload(podItems, 'StatefulSet', name)
-    workloads.push({
-      name,
-      kind: 'StatefulSet',
-      replicas,
-      readyReplicas: ready,
-      status: appStatus(replicas, ready, workloadPods),
-      images: (sts.spec?.template?.spec?.containers ?? []).map((c) => c.image ?? ''),
-      urls: urlsForApp(ingressItems, name),
-      project: sts.metadata?.labels?.[PROJECT_LABEL],
-      launchpad: sts.metadata?.labels?.[APP_LABEL] !== undefined,
-      pods: workloadPods
-    })
+    const workload = workloadFromStatefulSet(sts, podItems, ingressItems)
+    if (workload) workloads.push(workload)
   }
 
   return {

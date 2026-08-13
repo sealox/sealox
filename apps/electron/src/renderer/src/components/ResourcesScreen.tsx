@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import sealosLogo from '../assets/sealos-logo-gold.svg'
+import AppDetailView, { type Crumb } from './AppDetailView'
+import ProjectDetailView from './ProjectDetailView'
 import TemplatesTab from './TemplatesTab'
 import WorkspacePanel from './WorkspacePanel'
 import type {
@@ -19,6 +21,11 @@ interface Props {
 }
 
 type Tab = 'home' | 'templates' | 'projects' | 'apps' | 'databases' | 'storage' | 'account'
+
+/** 详情导航栈：项目 ↔ 应用可互相跳转，栈保留返回路径 */
+type DetailEntry =
+  | { type: 'project'; name: string }
+  | { type: 'app'; name: string; kind: 'Deployment' | 'StatefulSet' }
 
 const REFRESH_INTERVAL_MS = 15_000
 
@@ -241,6 +248,8 @@ function UrlLinks({ urls }: { urls: string[] }): React.JSX.Element | null {
           href="#open"
           onClick={(e) => {
             e.preventDefault()
+            // 卡片本身可点击进详情，链接点击不应该同时触发
+            e.stopPropagation()
             openUrl(url)
           }}
         >
@@ -260,7 +269,13 @@ interface ProjectView {
   urls: string[]
 }
 
-function ProjectCard({ view }: { view: ProjectView }): React.JSX.Element {
+function ProjectCard({
+  view,
+  onOpen
+}: {
+  view: ProjectView
+  onOpen: () => void
+}): React.JSX.Element {
   const { project, status, workloads, databases, buckets, urls } = view
   const failingPods = workloads.flatMap((w) => w.pods.filter((p) => p.reason))
   const parts = [
@@ -271,11 +286,30 @@ function ProjectCard({ view }: { view: ProjectView }): React.JSX.Element {
     project.createdAt ? `创建于 ${new Date(project.createdAt).toLocaleString()}` : null
   ].filter(Boolean)
   return (
-    <div className="card">
+    <div
+      className="card card-clickable"
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onOpen()
+      }}
+    >
       <div className="card-head">
         <span className={statusClass(status)} />
-        <h3>{project.name}</h3>
+        {project.icon && (
+          <img
+            className="card-icon"
+            src={project.icon}
+            alt=""
+            onError={(e) => {
+              ;(e.target as HTMLImageElement).style.display = 'none'
+            }}
+          />
+        )}
+        <h3>{project.displayName ?? project.name}</h3>
         {project.template && <span className="chip chip-project">{project.template}</span>}
+        <span className="card-open-hint">›</span>
       </div>
       <div className="card-meta">
         <span>{parts.join(' · ')}</span>
@@ -294,15 +328,43 @@ function ProjectCard({ view }: { view: ProjectView }): React.JSX.Element {
   )
 }
 
-function WorkloadCard({ app }: { app: AppWorkload }): React.JSX.Element {
+function WorkloadCard({
+  app,
+  onOpen,
+  onOpenProject
+}: {
+  app: AppWorkload
+  onOpen: () => void
+  onOpenProject: (project: string) => void
+}): React.JSX.Element {
   const failingPods = app.pods.filter((p) => p.reason)
   return (
-    <div className="card">
+    <div
+      className="card card-clickable"
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onOpen()
+      }}
+    >
       <div className="card-head">
         <span className={statusClass(app.status)} />
         <h3>{app.name}</h3>
         <span className="chip">{app.kind === 'Deployment' ? '无状态' : '有状态'}</span>
-        {app.project && <span className="chip chip-project">{app.project}</span>}
+        {app.project && (
+          <button
+            className="chip chip-project chip-link"
+            title={`打开项目 ${app.project}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenProject(app.project as string)
+            }}
+          >
+            {app.project}
+          </button>
+        )}
+        <span className="card-open-hint">›</span>
       </div>
       <div className="card-meta">
         <span>
@@ -457,7 +519,13 @@ function HomeHero(): React.JSX.Element {
 
 /* ── tabs ──────────────────────────────────────── */
 
-function ProjectsTab({ snapshot }: { snapshot: ResourceSnapshot }): React.JSX.Element {
+function ProjectsTab({
+  snapshot,
+  onOpenProject
+}: {
+  snapshot: ResourceSnapshot
+  onOpenProject: (name: string) => void
+}): React.JSX.Element {
   const views = useMemo<ProjectView[]>(
     () =>
       snapshot.projects.map((project) => {
@@ -491,13 +559,25 @@ function ProjectsTab({ snapshot }: { snapshot: ResourceSnapshot }): React.JSX.El
   return (
     <div className="grid">
       {views.map((view) => (
-        <ProjectCard key={view.project.name} view={view} />
+        <ProjectCard
+          key={view.project.name}
+          view={view}
+          onOpen={() => onOpenProject(view.project.name)}
+        />
       ))}
     </div>
   )
 }
 
-function AppsTab({ snapshot }: { snapshot: ResourceSnapshot }): React.JSX.Element {
+function AppsTab({
+  snapshot,
+  onOpenApp,
+  onOpenProject
+}: {
+  snapshot: ResourceSnapshot
+  onOpenApp: (name: string, kind: 'Deployment' | 'StatefulSet') => void
+  onOpenProject: (name: string) => void
+}): React.JSX.Element {
   // 与 App Launchpad 相同的口径：带 app-deploy-manager 标签的工作负载
   const launchpadApps = useMemo(() => snapshot.apps.filter((a) => a.launchpad), [snapshot])
   const others = useMemo(() => snapshot.apps.filter((a) => !a.launchpad), [snapshot])
@@ -515,7 +595,12 @@ function AppsTab({ snapshot }: { snapshot: ResourceSnapshot }): React.JSX.Elemen
     <>
       <div className="grid">
         {launchpadApps.map((app) => (
-          <WorkloadCard key={`${app.kind}-${app.name}`} app={app} />
+          <WorkloadCard
+            key={`${app.kind}-${app.name}`}
+            app={app}
+            onOpen={() => onOpenApp(app.name, app.kind)}
+            onOpenProject={onOpenProject}
+          />
         ))}
       </div>
       {others.length > 0 && (
@@ -523,7 +608,12 @@ function AppsTab({ snapshot }: { snapshot: ResourceSnapshot }): React.JSX.Elemen
           <h2>Launchpad 之外的工作负载（{others.length}）</h2>
           <div className="grid">
             {others.map((app) => (
-              <WorkloadCard key={`${app.kind}-${app.name}`} app={app} />
+              <WorkloadCard
+                key={`${app.kind}-${app.name}`}
+                app={app}
+                onOpen={() => onOpenApp(app.name, app.kind)}
+                onOpenProject={onOpenProject}
+              />
             ))}
           </div>
         </section>
@@ -642,11 +732,29 @@ const TAB_TITLE: Record<Exclude<Tab, 'home'>, string> = {
 
 function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX.Element {
   const [tab, setTab] = useState<Tab>('home')
+  const [detailStack, setDetailStack] = useState<DetailEntry[]>([])
   const [collapsed, setCollapsed] = useState(false)
   const [snapshot, setSnapshot] = useState<ResourceSnapshot | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [wsOpen, setWsOpen] = useState(false)
+
+  /** 切换主导航时离开详情 */
+  const navigateTab = useCallback((next: Tab) => {
+    setTab(next)
+    setDetailStack([])
+  }, [])
+
+  /** 打开项目详情（项目属于「项目」tab，从任何入口进入都归位） */
+  const openProject = useCallback((name: string) => {
+    setTab('projects')
+    setDetailStack([{ type: 'project', name }])
+  }, [])
+
+  /** 在当前栈上叠加应用详情（保留返回路径） */
+  const pushApp = useCallback((name: string, kind: 'Deployment' | 'StatefulSet') => {
+    setDetailStack((stack) => [...stack, { type: 'app', name, kind }])
+  }, [])
 
   const refresh = useCallback(() => {
     setLoading(true)
@@ -700,7 +808,7 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
         <header className="sidebar">
           <div className="sidebar-inner">
             <div className="sidebar-top">
-              <button className="sidebar-logo" title="Helios" onClick={() => setTab('home')}>
+              <button className="sidebar-logo" title="Helios" onClick={() => navigateTab('home')}>
                 <img className="logo-img" src={sealosLogo} alt="" />
               </button>
               <button className="icon-btn" title="收起侧边栏" onClick={() => setCollapsed(true)}>
@@ -723,8 +831,9 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
                   status={status}
                   onStatusChange={onStatusChange}
                   onSwitched={() => {
-                    // 旧工作空间的资源快照立即作废，等新数据
+                    // 旧工作空间的资源快照与详情导航立即作废，等新数据
                     setSnapshot(null)
+                    setDetailStack([])
                     refresh()
                   }}
                   onClose={() => setWsOpen(false)}
@@ -737,7 +846,7 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
                 <button
                   key={item.id}
                   className={`nav-item${tab === item.id ? ' active' : ''}`}
-                  onClick={() => setTab(item.id)}
+                  onClick={() => navigateTab(item.id)}
                 >
                   <span className="nav-icon">{item.icon}</span>
                   {item.label}
@@ -748,7 +857,7 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
                 <button
                   key={item.id}
                   className={`nav-item${tab === item.id ? ' active' : ''}`}
-                  onClick={() => setTab(item.id)}
+                  onClick={() => navigateTab(item.id)}
                 >
                   <span className="nav-icon">{item.icon}</span>
                   {item.label}
@@ -767,10 +876,11 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
                   <button
                     key={project.name}
                     className="recent-row"
-                    onClick={() => setTab('projects')}
+                    title={project.displayName ?? project.name}
+                    onClick={() => openProject(project.name)}
                   >
                     <ProjectsIcon size={16} />
-                    <span className="recent-name">{project.name}</span>
+                    <span className="recent-name">{project.displayName ?? project.name}</span>
                   </button>
                 ))
               )}
@@ -802,7 +912,11 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
                 </div>
               )}
               <div className="sidebar-foot">
-                <button className="avatar-btn" title="用户信息" onClick={() => setTab('account')}>
+                <button
+                  className="avatar-btn"
+                  title="用户信息"
+                  onClick={() => navigateTab('account')}
+                >
                   <span className="avatar-dot">{avatarLetter}</span>
                 </button>
                 <button
@@ -835,6 +949,43 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
               <XLogoIcon size={15} />
             </button>
           </>
+        ) : detailStack.length > 0 ? (
+          <div className="page">
+            <div className="page-body page-body-detail">
+              {(() => {
+                const top = detailStack[detailStack.length - 1]
+                const crumbs: Crumb[] = [
+                  {
+                    label: TAB_TITLE[tab as Exclude<Tab, 'home'>],
+                    onClick: () => setDetailStack([])
+                  },
+                  ...detailStack.map((entry, i) => ({
+                    label: entry.name,
+                    onClick:
+                      i < detailStack.length - 1
+                        ? () => setDetailStack(detailStack.slice(0, i + 1))
+                        : undefined
+                  }))
+                ]
+                return top.type === 'project' ? (
+                  <ProjectDetailView
+                    key={top.name}
+                    name={top.name}
+                    crumbs={crumbs}
+                    onOpenApp={pushApp}
+                  />
+                ) : (
+                  <AppDetailView
+                    key={`${top.kind}-${top.name}`}
+                    name={top.name}
+                    kind={top.kind}
+                    crumbs={crumbs}
+                    onOpenProject={openProject}
+                  />
+                )
+              })()}
+            </div>
+          </div>
         ) : (
           <div className="page">
             <header className="page-head">
@@ -859,8 +1010,12 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
 
                   {!snapshot && !error && <div className="placeholder">正在读取工作空间…</div>}
 
-                  {snapshot && tab === 'projects' && <ProjectsTab snapshot={snapshot} />}
-                  {snapshot && tab === 'apps' && <AppsTab snapshot={snapshot} />}
+                  {snapshot && tab === 'projects' && (
+                    <ProjectsTab snapshot={snapshot} onOpenProject={openProject} />
+                  )}
+                  {snapshot && tab === 'apps' && (
+                    <AppsTab snapshot={snapshot} onOpenApp={pushApp} onOpenProject={openProject} />
+                  )}
                   {snapshot && tab === 'databases' && <DatabasesTab snapshot={snapshot} />}
                   {snapshot && tab === 'storage' && <StorageTab snapshot={snapshot} />}
                   {tab === 'account' && (

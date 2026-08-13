@@ -52,18 +52,40 @@
   点缀）+ 居中部署输入框（标题"今天想开发点什么？"，拖入文件夹/粘贴 git
   地址，M2 接线）＋模板建议 chips，布局即 Lovable 的 prompt hero。右下角常驻
   "Hi · Follow me on X" 胶囊（X logo，点击外部浏览器打开 x.com/norberia_cz）。
-- **项目**：项目 = 模板实例（Template API 的 instance），由多个组件（应用、
-  数据库、存储桶）构成，归属由 `cloud.sealos.io/deploy-on-sealos` 标签确定。
-  一个项目一张卡片，聚合展示：
+- **项目**：项目 = 模板实例（namespace 里的 `instances.app.sealos.io` CR，
+  与 Template 前端同源直读，不再依赖 template.{region} 服务），由多个组件
+  （应用、数据库、存储桶）构成，归属由 `cloud.sealos.io/deploy-on-sealos`
+  标签确定。一个项目一张卡片，聚合展示：
   - 状态由项目名下的应用与数据库聚合，优先级：异常 > 启动中 > 运行中 >
     已暂停；
-  - 模板名、应用/数据库/存储桶数量、创建时间；
+  - 模板图标与备注名（displayName 注解）、模板名、应用/数据库/存储桶数量、
+    创建时间；
   - 公网域名（点击用外部浏览器打开）；
   - 故障 pod 的原因与重启次数（标红展示）。
 - **应用**：与 App Launchpad 同一口径——带 `cloud.sealos.io/app-deploy-manager`
   标签的单个工作负载（Deployment/StatefulSet）。逐个展示状态、副本、镜像、
   公网域名与所属项目 chip；不带该标签的工作负载在"Launchpad 之外的工作负载"
   小节单独展示，保证所见与 Sealos 实际状态一致。
+- **详情页**（项目/应用卡片点击进入，面包屑导航栈支持项目 ↔ 应用互跳，
+  侧边栏"最近"直达项目详情）：
+  - **项目详情**：图标+备注名+模板 chip+聚合状态、GitHub/官网外链、统计条
+    （应用/数据库/存储桶/定时任务数、创建时间）、异常 Pod 聚焦横幅（点击跳
+    对应应用）、公网入口列表、组件分区——应用（点击进应用详情）、数据库
+    （引擎/版本/规格/连接凭证 secret 名）、对象存储（策略/实际桶名）、定时
+    任务（schedule/暂停态/上次运行）、配套资源（Secret/ConfigMap/Service/
+    Job/PVC/SA/Role/Issuer/Certificate/App CR 按 kind 分组，排除数据库内部
+    资源 `sealos-db-provider-cr`）。
+  - **应用详情**：与 App Launchpad 详情同口径、单页分区呈现——统计条（状态/
+    副本+HPA 范围/CPU/内存限额/持久存储/创建时间）、CPU/内存监控曲线（走
+    applaunchpad 公开 API `applaunchpad.{region}/api/monitor/getMonitorData`，
+    kubeconfig 鉴权，近 1 小时、60s 轮询，序列过滤到当前存活 pod）、网络表
+    （端口/集群内地址/公网地址/自定义域名标记，service 按 label、同名或
+    selector 匹配）、Pods 表（行内展开：容器状态 chips、按需拉取日志尾部
+    400 行、崩溃前日志、复制全部）、配置（镜像/命令/环境变量表——valueFrom
+    只显示引用不显示明文、ConfigMap 挂载、持久卷）、事件流（workload+RS+pod
+    聚合，Warning 标红）。
+  - 详情数据按需拉取（`sealos:app-detail` / `sealos:project-detail` IPC），
+    15s 轮询；切工作空间/切 tab 时导航栈清空。
 - **模板**：sealos.io 应用商店目录（212+ 模板，官网 `/api/apps/en`，主进程
   30 分钟缓存）——分类/搜索/排序/分页，卡片样式对齐官网（浅色适配）；模板名
   跳官网详情，"部署"按钮暂以外部浏览器打开用户 region 控制台的模板部署页，
@@ -73,11 +95,11 @@
   桶名、创建时间。
 - **用户信息**：区域、API server、命名空间、工作空间、登录时间、kubeconfig
   路径；退出登录放在此页。
-- 数据规则：全部直读 Sealos 现有 API（namespace-scoped k8s API + Template
-  API），本地不存业务状态；15 秒自动刷新 + 手动刷新；数据库只展示连接信息
-  所在的 secret 名，不显示明文。
-- 留给 M3：实时日志、失败诊断（agent 读日志/events 输出人话结论）、以项目
-  为单位的整体删除（需二次确认）。
+- 数据规则：全部直读 Sealos 现有 API（namespace-scoped k8s API +
+  applaunchpad 监控 API），本地不存业务状态；15 秒自动刷新 + 手动刷新；
+  数据库/环境变量只展示 secret 引用名，不显示明文。
+- 留给 M3：日志实时流式（详情页已有按需日志快照）、失败诊断（agent 读
+  日志/events 输出人话结论）、以项目为单位的整体删除（需二次确认）。
 
 ## 非目标（v1 明确不做）
 
@@ -130,7 +152,9 @@
 - use-sealos skill：`/Users/che/Documents/GitHub/sealos-skills-next`
   （部署决策树、`sealos-api.py`、`wait-app.sh`、references/ 下的平台约定）
 - Sealos 源码：`/Users/che/Documents/GitHub/sealos`
-  （控制台各前端实际调用的 API 定义）
+  （控制台各前端实际调用的 API 定义）；仓库内 `dev-assets/sealos` 有
+  applaunchpad/dbprovider/template 三个前端的 sparse clone，详情页的字段
+  口径（标签/注解约定、监控 API、实例 CR）都以它为准
 - Sealos 资源模型：namespace（`ns-xxx`）、app label
   `cloud.sealos.io/app-deploy-manager`、KubeBlocks `Cluster` CR、
   `ObjectStorageBucket` CR、region domain（如 `usw-1.sealos.io`）

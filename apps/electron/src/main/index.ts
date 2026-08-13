@@ -11,6 +11,7 @@ import {
   saveKubeconfigText,
   startDeviceLogin
 } from './sealos/auth'
+import { fetchAppDetail, fetchAppMonitor, fetchPodLogs, fetchProjectDetail } from './sealos/details'
 import { fetchResources } from './sealos/resources'
 import { fetchTemplates } from './sealos/templates'
 import {
@@ -77,6 +78,14 @@ function registerIpc(): void {
   ipcMain.handle('sealos:save-kubeconfig', (_event, text: string) => saveKubeconfigText(text))
   ipcMain.handle('sealos:logout', () => logout())
   ipcMain.handle('sealos:resources', () => fetchResources())
+  ipcMain.handle('sealos:app-detail', (_event, name: string, kind: 'Deployment' | 'StatefulSet') =>
+    fetchAppDetail(name, kind)
+  )
+  ipcMain.handle('sealos:project-detail', (_event, name: string) => fetchProjectDetail(name))
+  ipcMain.handle('sealos:app-monitor', (_event, name: string) => fetchAppMonitor(name))
+  ipcMain.handle('sealos:pod-logs', (_event, pod: string, container?: string, previous?: boolean) =>
+    fetchPodLogs(pod, container, previous)
+  )
   ipcMain.handle('sealos:templates', () => fetchTemplates())
   ipcMain.handle('sealos:workspaces', () => listWorkspaces())
   ipcMain.handle('sealos:workspace-switch', (_event, uid: string) => switchWorkspace(uid))

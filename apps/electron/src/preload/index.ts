@@ -1,8 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
+  AppDetail,
+  AppMonitor,
   HeliosApi,
   LoginEvent,
+  ProjectDetail,
   RegionOption,
   ResourceSnapshot,
   SealosStatus,
@@ -20,6 +23,14 @@ const helios: HeliosApi = {
     ipcRenderer.invoke('sealos:save-kubeconfig', text),
   logout: (): Promise<void> => ipcRenderer.invoke('sealos:logout'),
   getResources: (): Promise<ResourceSnapshot> => ipcRenderer.invoke('sealos:resources'),
+  getAppDetail: (name: string, kind: 'Deployment' | 'StatefulSet'): Promise<AppDetail> =>
+    ipcRenderer.invoke('sealos:app-detail', name, kind),
+  getProjectDetail: (name: string): Promise<ProjectDetail> =>
+    ipcRenderer.invoke('sealos:project-detail', name),
+  getAppMonitor: (name: string): Promise<AppMonitor> =>
+    ipcRenderer.invoke('sealos:app-monitor', name),
+  getPodLogs: (pod: string, container?: string, previous?: boolean): Promise<string> =>
+    ipcRenderer.invoke('sealos:pod-logs', pod, container, previous),
   getTemplates: (): Promise<TemplateCatalog> => ipcRenderer.invoke('sealos:templates'),
   listWorkspaces: (): Promise<WorkspaceInfo[]> => ipcRenderer.invoke('sealos:workspaces'),
   switchWorkspace: (uid: string): Promise<SealosStatus> =>
