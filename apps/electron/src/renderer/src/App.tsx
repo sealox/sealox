@@ -31,6 +31,7 @@ function App(): React.JSX.Element {
   return (
     <ResourcesScreen
       status={status}
+      onStatusChange={setStatus}
       onLogout={async () => {
         await window.helios.logout()
         refreshStatus()

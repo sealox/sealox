@@ -995,6 +995,125 @@
   font-size: 15px;
 }
 
+/* ── 工作空间切换菜单 ───────────────────────────── */
+
+.ws-wrap {
+  position: relative;
+}
+
+.ws-pill.open {
+  background: var(--nav-active);
+}
+
+.ws-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 19;
+}
+
+.ws-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  padding: 6px;
+  background: var(--bg-card);
+  border-radius: 12px;
+  box-shadow:
+    inset 0 0 0 0.5px var(--ring),
+    0 12px 28px -6px rgba(0, 0, 0, 0.18);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.ws-menu-title {
+  padding: 6px 10px 4px;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+
+.ws-menu-note {
+  padding: 8px 10px 10px;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+.ws-menu-error {
+  margin: 4px 6px 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(220, 38, 38, 0.06);
+  font-size: 12px;
+  line-height: 1.4;
+  color: #b91c1c;
+  user-select: text;
+}
+
+.ws-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: background 0.15s;
+}
+
+.ws-item:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.ws-item:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.ws-item.current {
+  cursor: default;
+}
+
+.ws-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ws-item-name {
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-item-sub {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+
+.ws-item-spin {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--sun-lo);
+  animation: ws-spin 0.7s linear infinite;
+}
+
+@keyframes ws-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ── 模板页（布局对齐 sealos.io 应用商店，浅色适配）── */
 
 .tpl-toolbar {

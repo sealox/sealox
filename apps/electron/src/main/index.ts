@@ -13,6 +13,7 @@ import {
 } from './sealos/auth'
 import { fetchResources } from './sealos/resources'
 import { fetchTemplates } from './sealos/templates'
+import { listWorkspaces, switchWorkspace } from './sealos/workspaces'
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -70,6 +71,8 @@ function registerIpc(): void {
   ipcMain.handle('sealos:logout', () => logout())
   ipcMain.handle('sealos:resources', () => fetchResources())
   ipcMain.handle('sealos:templates', () => fetchTemplates())
+  ipcMain.handle('sealos:workspaces', () => listWorkspaces())
+  ipcMain.handle('sealos:workspace-switch', (_event, uid: string) => switchWorkspace(uid))
 
   ipcMain.handle('sealos:open-external', (_event, url: string) => {
     if (/^https?:\/\//.test(url)) return shell.openExternal(url)

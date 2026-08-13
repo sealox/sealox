@@ -8,11 +8,13 @@ import type {
   DatabaseInfo,
   InstanceInfo,
   ResourceSnapshot,
-  SealosStatus
+  SealosStatus,
+  WorkspaceInfo
 } from '../../../shared/types'
 
 interface Props {
   status: SealosStatus
+  onStatusChange: (status: SealosStatus) => void
   onLogout: () => Promise<void>
 }
 
@@ -123,6 +125,14 @@ function ChevronDownIcon({ size }: IconProps): React.JSX.Element {
   return (
     <svg {...iconAttrs(size)}>
       <path d="m6.5 9.5 5.5 5.5 5.5-5.5" />
+    </svg>
+  )
+}
+
+function CheckIcon({ size }: IconProps): React.JSX.Element {
+  return (
+    <svg {...iconAttrs(size)}>
+      <path d="m5 12.5 4.5 4.5L19 7.5" />
     </svg>
   )
 }
@@ -600,12 +610,16 @@ const TAB_TITLE: Record<Exclude<Tab, 'home'>, string> = {
   account: '用户信息'
 }
 
-function ResourcesScreen({ status, onLogout }: Props): React.JSX.Element {
+function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX.Element {
   const [tab, setTab] = useState<Tab>('home')
   const [collapsed, setCollapsed] = useState(false)
   const [snapshot, setSnapshot] = useState<ResourceSnapshot | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [wsOpen, setWsOpen] = useState(false)
+  const [wsList, setWsList] = useState<WorkspaceInfo[] | null>(null)
+  const [wsError, setWsError] = useState('')
+  const [switching, setSwitching] = useState('')
 
   const refresh = useCallback(() => {
     setLoading(true)
@@ -629,6 +643,40 @@ function ResourcesScreen({ status, onLogout }: Props): React.JSX.Element {
       clearInterval(timer)
     }
   }, [refresh])
+
+  const toggleWorkspaceMenu = useCallback(() => {
+    setWsOpen((open) => {
+      if (open) return false
+      setWsList(null)
+      setWsError('')
+      window.helios.listWorkspaces().then(setWsList, (err: unknown) => {
+        setWsError(err instanceof Error ? err.message : String(err))
+      })
+      return true
+    })
+  }, [])
+
+  const pickWorkspace = useCallback(
+    (ws: WorkspaceInfo) => {
+      if (ws.current || switching) return
+      setSwitching(ws.uid)
+      setWsError('')
+      window.helios
+        .switchWorkspace(ws.uid)
+        .then((newStatus) => {
+          onStatusChange(newStatus)
+          setWsOpen(false)
+          // 旧工作空间的资源快照立即作废，等新数据
+          setSnapshot(null)
+          refresh()
+        })
+        .catch((err: unknown) => {
+          setWsError(err instanceof Error ? err.message : String(err))
+        })
+        .finally(() => setSwitching(''))
+    },
+    [switching, onStatusChange, refresh]
+  )
 
   const workspaceLabel = status.workspaceName ?? status.workspace ?? 'Sealos 工作空间'
   const avatarLetter = (status.workspaceName ?? status.namespace ?? 'S')
@@ -667,11 +715,54 @@ function ResourcesScreen({ status, onLogout }: Props): React.JSX.Element {
               </button>
             </div>
 
-            <button className="ws-pill" title={workspaceLabel}>
-              <span className="ws-avatar">{avatarLetter}</span>
-              <span className="ws-name">{workspaceLabel}</span>
-              <ChevronDownIcon size={16} />
-            </button>
+            <div className="ws-wrap">
+              <button
+                className={`ws-pill${wsOpen ? ' open' : ''}`}
+                title={workspaceLabel}
+                onClick={toggleWorkspaceMenu}
+              >
+                <span className="ws-avatar">{avatarLetter}</span>
+                <span className="ws-name">{workspaceLabel}</span>
+                <ChevronDownIcon size={16} />
+              </button>
+              {wsOpen && (
+                <>
+                  <div className="ws-overlay" onClick={() => setWsOpen(false)} />
+                  <div className="ws-menu">
+                    <div className="ws-menu-title">切换工作空间</div>
+                    {wsError && <div className="ws-menu-error">{wsError}</div>}
+                    {!wsList && !wsError && <div className="ws-menu-note">正在加载…</div>}
+                    {wsList?.map((ws) => {
+                      const name = ws.teamName || ws.id
+                      return (
+                        <button
+                          key={ws.uid}
+                          className={`ws-item${ws.current ? ' current' : ''}`}
+                          disabled={!!switching}
+                          onClick={() => pickWorkspace(ws)}
+                        >
+                          <span className="ws-avatar">
+                            {name.replace(/^ns-/, '').charAt(0).toUpperCase()}
+                          </span>
+                          <span className="ws-item-main">
+                            <span className="ws-item-name">{name}</span>
+                            <span className="ws-item-sub">
+                              {ws.isPrivate ? '私人' : '团队'}
+                              {ws.roleLabel ? ` · ${ws.roleLabel}` : ''}
+                            </span>
+                          </span>
+                          {ws.current ? (
+                            <CheckIcon size={16} />
+                          ) : switching === ws.uid ? (
+                            <span className="ws-item-spin" />
+                          ) : null}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
 
             <nav className="nav">
               {NAV.map((item) => (

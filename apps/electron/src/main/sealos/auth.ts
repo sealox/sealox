@@ -30,7 +30,7 @@ export function readKubeconfigText(): string {
   return readFileSync(KUBECONFIG_PATH, 'utf8')
 }
 
-function loadAuthJson(): Record<string, unknown> {
+export function loadAuthJson(): Record<string, unknown> {
   try {
     return JSON.parse(readFileSync(AUTH_PATH, 'utf8'))
   } catch {
@@ -90,13 +90,17 @@ async function postForm(url: string, form: Record<string, string>): Promise<Http
   return { status: resp.status, body: await parseBody(resp) }
 }
 
-async function requestJson(
+export async function requestJson(
   url: string,
-  init: { method?: string; token?: string } = {}
+  init: { method?: string; token?: string; json?: unknown } = {}
 ): Promise<HttpResult> {
+  const headers: Record<string, string> = {}
+  if (init.token) headers.Authorization = init.token
+  if (init.json !== undefined) headers['Content-Type'] = 'application/json'
   const resp = await fetch(url, {
     method: init.method ?? 'GET',
-    headers: init.token ? { Authorization: init.token } : undefined,
+    headers,
+    body: init.json !== undefined ? JSON.stringify(init.json) : undefined,
     signal: AbortSignal.timeout(30_000)
   })
   return { status: resp.status, body: await parseBody(resp) }
@@ -132,9 +136,9 @@ function sleep(ms: number, session: LoginSession): Promise<void> {
   })
 }
 
-async function saveCredentials(
+export async function saveCredentials(
   region: string,
-  accessToken: string,
+  accessToken: string | undefined,
   regionalToken: string,
   kubeconfig: string,
   workspace: { uid?: string; id?: string; teamName?: string } | null

@@ -75,6 +75,18 @@ export interface ResourceSnapshot {
   warnings: string[]
 }
 
+export interface WorkspaceInfo {
+  uid: string
+  /** 命名空间名（ns-xxx） */
+  id: string
+  /** 展示名 */
+  teamName?: string
+  isPrivate: boolean
+  /** 拥有者/管理员/开发者（尽力解析，未知时缺省） */
+  roleLabel?: string
+  current: boolean
+}
+
 export interface TemplateInfo {
   name: string
   slug: string
@@ -116,6 +128,8 @@ export interface HeliosApi {
   logout(): Promise<void>
   getResources(): Promise<ResourceSnapshot>
   getTemplates(): Promise<TemplateCatalog>
+  listWorkspaces(): Promise<WorkspaceInfo[]>
+  switchWorkspace(uid: string): Promise<SealosStatus>
   openExternal(url: string): Promise<void>
   onLoginEvent(listener: (event: LoginEvent) => void): () => void
 }

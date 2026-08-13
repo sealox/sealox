@@ -6,7 +6,8 @@ import type {
   RegionOption,
   ResourceSnapshot,
   SealosStatus,
-  TemplateCatalog
+  TemplateCatalog,
+  WorkspaceInfo
 } from '../shared/types'
 
 const helios: HeliosApi = {
@@ -19,6 +20,9 @@ const helios: HeliosApi = {
   logout: (): Promise<void> => ipcRenderer.invoke('sealos:logout'),
   getResources: (): Promise<ResourceSnapshot> => ipcRenderer.invoke('sealos:resources'),
   getTemplates: (): Promise<TemplateCatalog> => ipcRenderer.invoke('sealos:templates'),
+  listWorkspaces: (): Promise<WorkspaceInfo[]> => ipcRenderer.invoke('sealos:workspaces'),
+  switchWorkspace: (uid: string): Promise<SealosStatus> =>
+    ipcRenderer.invoke('sealos:workspace-switch', uid),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('sealos:open-external', url),
   onLoginEvent: (listener: (event: LoginEvent) => void): (() => void) => {
     const wrapped = (_: Electron.IpcRendererEvent, event: LoginEvent): void => listener(event)
