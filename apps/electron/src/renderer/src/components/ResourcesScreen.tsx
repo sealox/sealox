@@ -171,14 +171,6 @@ function PanelIcon({ size }: IconProps): React.JSX.Element {
   )
 }
 
-function BoltIcon({ size }: IconProps): React.JSX.Element {
-  return (
-    <svg width={size ?? 20} height={size ?? 20} viewBox="0 0 24 24" fill="currentColor">
-      <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" />
-    </svg>
-  )
-}
-
 function WorkflowIcon({ size }: IconProps): React.JSX.Element {
   return (
     <svg {...iconAttrs(size)}>
@@ -399,17 +391,6 @@ function HomeHero(): React.JSX.Element {
     <div className="hero">
       <div className="hero-spacer-top" />
       <div className="hero-main">
-        <button
-          className="announce"
-          title="在 X 上关注我"
-          onClick={() =>
-            openUrl('https://sealos.io/?utm_source=Bounty-ZhuChe&utm_medium=x&utm_campaign=bio')
-          }
-        >
-          <span className="announce-badge">Hi</span>
-          <span>Follow me on X</span>
-          <XLogoIcon size={15} />
-        </button>
         <h1>今天部署点什么？</h1>
         <div className="prompt-card">
           <textarea
@@ -600,6 +581,13 @@ const NAV: Array<{ id: Tab; label: string; icon: React.JSX.Element }> = [
   { id: 'storage', label: '存储', icon: <StorageIcon /> }
 ]
 
+const QUOTA_LABEL: Record<string, string> = {
+  cpu: 'CPU',
+  memory: '内存',
+  storage: '存储',
+  gpu: 'GPU'
+}
+
 const TAB_TITLE: Record<Exclude<Tab, 'home'>, string> = {
   templates: '模板',
   apps: '应用',
@@ -730,15 +718,30 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
             </div>
 
             <div className="sidebar-bottom">
-              <div className="ws-card">
-                <div className="ws-card-text">
-                  <p>Upgrade to Pro</p>
-                  <p>Enjoy higher quota</p>
+              {snapshot && snapshot.quota.length > 0 && (
+                <div className="quota-card">
+                  <div className="quota-title">工作空间配额</div>
+                  {snapshot.quota.map((q) => {
+                    const pct = q.limit > 0 ? Math.min(100, (q.used / q.limit) * 100) : 0
+                    return (
+                      <div key={q.type} className="quota-row">
+                        <div className="quota-row-head">
+                          <span className="quota-label">{QUOTA_LABEL[q.type] ?? q.type}</span>
+                          <span className="quota-value">
+                            {q.usedText} / {q.limitText} {q.unit}
+                          </span>
+                        </div>
+                        <div className="quota-bar">
+                          <div
+                            className={`quota-bar-fill${pct >= 90 ? ' hot' : ''}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
-                <span className="ws-card-icon upgrade">
-                  <BoltIcon size={16} />
-                </span>
-              </div>
+              )}
               <div className="sidebar-foot">
                 <button className="avatar-btn" title="用户信息" onClick={() => setTab('account')}>
                   <span className="avatar-dot">{avatarLetter}</span>
@@ -763,6 +766,15 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
           <>
             <div className="hero-bg" aria-hidden="true" />
             <HomeHero />
+            <button
+              className="announce announce-corner"
+              title="在 X 上关注我"
+              onClick={() => openUrl('https://x.com/norberia_cz')}
+            >
+              <span className="announce-badge">Hi</span>
+              <span>Follow me on X</span>
+              <XLogoIcon size={15} />
+            </button>
           </>
         ) : (
           <div className="page">

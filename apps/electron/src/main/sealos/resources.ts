@@ -7,6 +7,7 @@ import type {
   DatabaseInfo,
   InstanceInfo,
   PodInfo,
+  QuotaItem,
   ResourceSnapshot
 } from '../../shared/types'
 import { KUBECONFIG_PATH, readKubeconfigText } from './auth'
@@ -192,6 +193,79 @@ async function listTemplateInstances(
   }
 }
 
+/* ── 配额（与 costcenter 同源：namespace 的 ResourceQuota status.hard/used）── */
+
+const BINARY_SUFFIX: Record<string, number> = {
+  Ki: 2 ** 10,
+  Mi: 2 ** 20,
+  Gi: 2 ** 30,
+  Ti: 2 ** 40,
+  Pi: 2 ** 50,
+  Ei: 2 ** 60
+}
+const DECIMAL_SUFFIX: Record<string, number> = { k: 1e3, M: 1e6, G: 1e9, T: 1e12, P: 1e15, E: 1e18 }
+const GIB = 2 ** 30
+
+function parseQuantity(value: string | undefined): number {
+  if (!value) return 0
+  const m = value.match(/^([0-9]*\.?[0-9]+)(m|Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$/)
+  if (!m) return Number(value) || 0
+  const n = Number(m[1])
+  const suffix = m[2]
+  if (!suffix) return n
+  if (suffix === 'm') return n / 1000
+  return n * (BINARY_SUFFIX[suffix] ?? DECIMAL_SUFFIX[suffix] ?? 1)
+}
+
+function formatAmount(n: number): string {
+  const rounded = Math.round(n * 10) / 10
+  return String(rounded % 1 === 0 ? Math.round(rounded) : rounded)
+}
+
+async function listQuota(
+  core: k8s.CoreV1Api,
+  namespace: string,
+  warnings: string[]
+): Promise<QuotaItem[]> {
+  try {
+    const list = await core.listNamespacedResourceQuota({ namespace })
+    const quota =
+      list.items.find((q) => q.metadata?.name === `quota-${namespace}`) ??
+      list.items.find((q) => q.status?.hard)
+    const hard = quota?.status?.hard ?? {}
+    const used = quota?.status?.used ?? {}
+
+    const items: QuotaItem[] = []
+    const push = (
+      type: string,
+      key: string,
+      toDisplay: (n: number) => number,
+      unit: string
+    ): void => {
+      if (hard[key] === undefined) return
+      const limit = toDisplay(parseQuantity(hard[key]))
+      if (limit <= 0) return
+      const usedValue = toDisplay(parseQuantity(used[key] ?? '0'))
+      items.push({
+        type,
+        used: usedValue,
+        limit,
+        usedText: formatAmount(usedValue),
+        limitText: formatAmount(limit),
+        unit
+      })
+    }
+    push('cpu', 'limits.cpu', (n) => n, 'vCPU')
+    push('memory', 'limits.memory', (n) => n / GIB, 'GiB')
+    push('storage', 'requests.storage', (n) => n / GIB, 'GiB')
+    push('gpu', 'limits.nvidia.com/gpu', (n) => n, 'GPU')
+    return items
+  } catch (err) {
+    warnings.push(`配额读取失败：${err instanceof Error ? err.message : String(err)}`)
+    return []
+  }
+}
+
 export async function fetchResources(): Promise<ResourceSnapshot> {
   const kc = new k8s.KubeConfig()
   kc.loadFromFile(KUBECONFIG_PATH)
@@ -208,7 +282,7 @@ export async function fetchResources(): Promise<ResourceSnapshot> {
   const networking = kc.makeApiClient(k8s.NetworkingV1Api)
 
   const warnings: string[] = []
-  const [deployments, statefulSets, pods, ingresses, databases, instances, buckets] =
+  const [deployments, statefulSets, pods, ingresses, databases, instances, buckets, quota] =
     await Promise.all([
       apps.listNamespacedDeployment({ namespace }),
       apps.listNamespacedStatefulSet({ namespace }),
@@ -216,7 +290,8 @@ export async function fetchResources(): Promise<ResourceSnapshot> {
       networking.listNamespacedIngress({ namespace }),
       listDatabases(kc, namespace, warnings),
       listTemplateInstances(regionDomain, warnings),
-      listBuckets(kc, namespace, warnings)
+      listBuckets(kc, namespace, warnings),
+      listQuota(core, namespace, warnings)
     ])
 
   const podItems = pods.items ?? []
@@ -271,6 +346,7 @@ export async function fetchResources(): Promise<ResourceSnapshot> {
     databases,
     instances,
     buckets,
+    quota,
     warnings
   }
 }

@@ -63,6 +63,17 @@ export interface BucketInfo {
   instance?: string
 }
 
+export interface QuotaItem {
+  /** cpu | memory | storage | gpu */
+  type: string
+  /** 展示单位下的数值（cpu=vCPU、memory/storage=GiB、gpu=个） */
+  used: number
+  limit: number
+  usedText: string
+  limitText: string
+  unit: string
+}
+
 export interface ResourceSnapshot {
   namespace: string
   regionDomain: string
@@ -71,6 +82,8 @@ export interface ResourceSnapshot {
   databases: DatabaseInfo[]
   instances: InstanceInfo[]
   buckets: BucketInfo[]
+  /** 工作空间 ResourceQuota 的 usage/limit */
+  quota: QuotaItem[]
   /** non-fatal problems while assembling the snapshot (e.g. template API down) */
   warnings: string[]
 }
