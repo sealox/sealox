@@ -12,7 +12,8 @@
   --ring: oklch(0.55 0.002 107 / 0.4); /* 0.5px 内描边 */
   --nav-active: oklch(0 0 0 / 0.08);
   --hover: oklch(0 0 0 / 0.05);
-  --accent-blue: oklch(0.5243 0.2396 264.41); /* New 徽章蓝 */
+  --accent-blue: oklch(0.5243 0.2396 264.41); /* 卡片 URL 链接蓝 */
+  --accent-gold: #f0be4e; /* New 徽章金（logo 金） */
 
   /* 状态色 */
   --running: #059669;
