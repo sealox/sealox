@@ -147,19 +147,29 @@ export function SparkCard({
   title,
   series,
   color,
-  unit = '%'
+  unit = '%',
+  headValue,
+  footNote,
+  yScale
 }: {
   title: string
   series: MonitorSeries[]
   color: string
   unit?: string
+  /** 右上角数值；缺省为各序列最新值的均值 */
+  headValue?: string
+  /** 右下角说明；缺省为多 Pod 提示 */
+  footNote?: string
+  /** y 轴刻度取整步长；缺省 20（百分比场景） */
+  yScale?: number
 }): React.JSX.Element {
   const allPoints = series.flatMap((s) => s.points)
   const hasData = allPoints.length > 0
   const t0 = hasData ? Math.min(...allPoints.map((p) => p[0])) : 0
   const t1 = hasData ? Math.max(...allPoints.map((p) => p[0])) : 1
   const dataMax = hasData ? Math.max(...allPoints.map((p) => p[1])) : 0
-  const yMax = Math.max(Math.ceil(dataMax / 20) * 20, 20)
+  const step = yScale ?? 20
+  const yMax = Math.max(Math.ceil(dataMax / step) * step, step)
 
   const latest = series
     .map((s) => s.points[s.points.length - 1]?.[1])
@@ -173,7 +183,7 @@ export function SparkCard({
       <div className="spark-head">
         <span className="spark-title">{title}</span>
         <span className="spark-value" style={{ color }}>
-          {current !== null ? `${current.toFixed(1)}${unit}` : '—'}
+          {headValue ?? (current !== null ? `${current.toFixed(1)}${unit}` : '—')}
         </span>
       </div>
       <div className="spark-body">
@@ -231,8 +241,10 @@ export function SparkCard({
         </div>
       </div>
       <div className="spark-foot">
-        <span>近 1 小时</span>
-        {series.length > 1 && <span>{series.length} 个 Pod · 右上为均值</span>}
+        <span>{footNote ?? '近 1 小时'}</span>
+        {footNote === undefined && series.length > 1 && (
+          <span>{series.length} 个 Pod · 右上为均值</span>
+        )}
       </div>
     </div>
   )

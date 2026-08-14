@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import sealosLogo from '../assets/sealos-logo-gold.svg'
+import AiProxyTab from './AiProxyTab'
 import AppDetailView, { type Crumb } from './AppDetailView'
 import ProjectDetailView from './ProjectDetailView'
 import TemplatesTab from './TemplatesTab'
@@ -20,7 +21,8 @@ interface Props {
   onLogout: () => Promise<void>
 }
 
-type Tab = 'home' | 'templates' | 'projects' | 'apps' | 'databases' | 'storage' | 'account'
+type Tab =
+  'home' | 'templates' | 'projects' | 'apps' | 'databases' | 'storage' | 'aiproxy' | 'account'
 
 /** 详情导航栈：项目 ↔ 应用可互相跳转，栈保留返回路径 */
 type DetailEntry =
@@ -228,6 +230,15 @@ function BucketIcon({ size }: IconProps): React.JSX.Element {
     <svg {...iconAttrs(size)}>
       <ellipse cx="12" cy="6" rx="7" ry="2.2" />
       <path d="M5 6l1.6 12.2A2 2 0 0 0 8.6 20h6.8a2 2 0 0 0 2-1.8L19 6" />
+    </svg>
+  )
+}
+
+function AiIcon({ size }: IconProps): React.JSX.Element {
+  return (
+    <svg {...iconAttrs(size)}>
+      <path d="M12 3.5 13.8 9 19.5 11 13.8 13 12 18.5 10.2 13 4.5 11 10.2 9 12 3.5Z" />
+      <path d="M18.5 15.5 19.2 17.6 21 18.5 19.2 19.4 18.5 21.5 17.8 19.4 16 18.5 17.8 17.6 18.5 15.5Z" />
     </svg>
   )
 }
@@ -711,7 +722,8 @@ const NAV_DEPLOY: NavItem[] = [
 const NAV_RESOURCES: NavItem[] = [
   { id: 'apps', label: '应用', icon: <AppsIcon /> },
   { id: 'databases', label: '数据库', icon: <DatabaseIcon /> },
-  { id: 'storage', label: '存储', icon: <StorageIcon /> }
+  { id: 'storage', label: '存储', icon: <StorageIcon /> },
+  { id: 'aiproxy', label: 'AI Proxy', icon: <AiIcon /> }
 ]
 
 const QUOTA_LABEL: Record<string, string> = {
@@ -727,6 +739,7 @@ const TAB_TITLE: Record<Exclude<Tab, 'home'>, string> = {
   apps: '应用',
   databases: '数据库',
   storage: '存储',
+  aiproxy: 'AI Proxy',
   account: '用户信息'
 }
 
@@ -990,7 +1003,7 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
           <div className="page">
             <header className="page-head">
               <h1>{TAB_TITLE[tab]}</h1>
-              {tab !== 'templates' && snapshot && (
+              {tab !== 'templates' && tab !== 'aiproxy' && snapshot && (
                 <span className="hint">
                   更新于 {new Date(snapshot.fetchedAt).toLocaleTimeString()}
                 </span>
@@ -999,6 +1012,8 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
             <div className="page-body">
               {tab === 'templates' ? (
                 <TemplatesTab />
+              ) : tab === 'aiproxy' ? (
+                <AiProxyTab />
               ) : (
                 <>
                   {error && <div className="error">{error}</div>}

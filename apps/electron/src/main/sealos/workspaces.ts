@@ -109,7 +109,8 @@ export async function switchWorkspace(uid: string): Promise<SealosStatus> {
     token: session.regionalToken,
     json: { ns_uid: uid }
   })
-  const newToken = (switchResp.body as { data?: { token?: string } })?.data?.token
+  const switchData = (switchResp.body as { data?: { token?: string; appToken?: string } })?.data
+  const newToken = switchData?.token
   if (switchResp.status !== 200 || !newToken) {
     throw new Error(`切换工作空间失败（HTTP ${switchResp.status}）`)
   }
@@ -122,11 +123,18 @@ export async function switchWorkspace(uid: string): Promise<SealosStatus> {
     throw new Error(`获取新 kubeconfig 失败（HTTP ${kcResp.status}）`)
   }
 
-  await saveCredentials(session.region, session.accessToken, newToken, kubeconfig, {
-    uid: target.uid,
-    id: target.id,
-    teamName: target.teamName
-  })
+  await saveCredentials(
+    session.region,
+    session.accessToken,
+    newToken,
+    kubeconfig,
+    {
+      uid: target.uid,
+      id: target.id,
+      teamName: target.teamName
+    },
+    switchData?.appToken
+  )
   return getStatus()
 }
 

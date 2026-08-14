@@ -151,7 +151,8 @@ export async function saveCredentials(
   accessToken: string | undefined,
   regionalToken: string,
   kubeconfig: string,
-  workspace: { uid?: string; id?: string; teamName?: string } | null
+  workspace: { uid?: string; id?: string; teamName?: string } | null,
+  appToken?: string
 ): Promise<void> {
   await fs.mkdir(SEALOS_DIR, { recursive: true })
   await fs.writeFile(KUBECONFIG_PATH, kubeconfig, { mode: 0o600 })
@@ -160,10 +161,57 @@ export async function saveCredentials(
     region,
     access_token: accessToken,
     regional_token: regionalToken,
+    // desktop 发给 iframe 应用的会话 token（internalJwtSecret 签名），
+    // aiproxy-web 等应用后端只认它，与 regional_token 不互通。
+    app_token: appToken,
     authenticated_at: new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
     auth_method: 'oauth2_device_grant'
   }
   if (workspace) auth.current_workspace = workspace
+  await fs.writeFile(AUTH_PATH, JSON.stringify(auth, null, 2), { mode: 0o600 })
+  await fs.chmod(AUTH_PATH, 0o600)
+}
+
+/**
+ * 取应用会话 token；auth.json 里没有（旧登录态）时用 regional_token
+ * 对当前工作空间重放一次 namespace/switch 换发并落盘。
+ */
+export async function ensureAppToken(): Promise<string> {
+  const auth = loadAuthJson()
+  const existing = auth.app_token
+  if (typeof existing === 'string' && existing) return existing
+
+  const region = typeof auth.region === 'string' ? auth.region : undefined
+  const regionalToken = typeof auth.regional_token === 'string' ? auth.regional_token : undefined
+  const workspace = auth.current_workspace as { uid?: string } | undefined
+  if (!region || !regionalToken || !workspace?.uid) {
+    throw new Error('当前登录态没有会话 token（可能是直接粘贴的 kubeconfig）。请退出后用账号登录。')
+  }
+
+  const resp = await requestJson(`${region}/api/auth/namespace/switch`, {
+    method: 'POST',
+    token: regionalToken,
+    json: { ns_uid: workspace.uid }
+  })
+  const data = (resp.body as { data?: { token?: string; appToken?: string } })?.data
+  if (resp.status === 401) throw new Error('会话已过期，请退出登录后重新登录')
+  if (resp.status !== 200 || !data?.appToken) {
+    throw new Error(`应用会话 token 换发失败（HTTP ${resp.status}）`)
+  }
+
+  auth.app_token = data.appToken
+  // switch 同时会轮换 regional token，一并更新避免旧 token 提前失效
+  if (data.token) auth.regional_token = data.token
+  await fs.writeFile(AUTH_PATH, JSON.stringify(auth, null, 2), { mode: 0o600 })
+  await fs.chmod(AUTH_PATH, 0o600)
+  return data.appToken
+}
+
+/** app token 失效（401/500）时清掉缓存，下次重新换发 */
+export async function invalidateAppToken(): Promise<void> {
+  const auth = loadAuthJson()
+  if (auth.app_token === undefined) return
+  delete auth.app_token
   await fs.writeFile(AUTH_PATH, JSON.stringify(auth, null, 2), { mode: 0o600 })
   await fs.chmod(AUTH_PATH, 0o600)
 }
@@ -246,7 +294,11 @@ export async function startDeviceLogin(
       method: 'POST',
       token: accessToken
     })
-    const regionData = (regionResp.body as { data?: { token?: string; kubeconfig?: string } })?.data
+    const regionData = (
+      regionResp.body as {
+        data?: { token?: string; kubeconfig?: string; appToken?: string }
+      }
+    )?.data
     if (regionResp.status !== 200 || !regionData?.token || !regionData?.kubeconfig) {
       throw new Error(`区域 token 交换失败（HTTP ${regionResp.status}）`)
     }
@@ -266,7 +318,14 @@ export async function startDeviceLogin(
       }
     }
 
-    await saveCredentials(region, accessToken, regionData.token, regionData.kubeconfig, workspace)
+    await saveCredentials(
+      region,
+      accessToken,
+      regionData.token,
+      regionData.kubeconfig,
+      workspace,
+      regionData.appToken
+    )
     emit({ type: 'success', status: getStatus() })
   } catch (err) {
     emit({ type: 'error', message: err instanceof Error ? err.message : String(err) })

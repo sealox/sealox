@@ -270,6 +270,71 @@ export interface ProjectDetail {
   fetchedAt: string
 }
 
+/* ── AI Proxy（aiproxy-web BFF，appToken 鉴权）────── */
+
+export interface AiKeyInfo {
+  id: number
+  name: string
+  /** 完整 key（使用时加 sk- 前缀），展示端负责打码 */
+  key: string
+  /** 1=启用 2=禁用 */
+  enabled: boolean
+  usedAmount: number
+  requestCount: number
+  /** 毫秒时间戳 */
+  createdAt: number
+  /** 毫秒时间戳，0=从未使用 */
+  accessedAt: number
+}
+
+export interface AiModelInfo {
+  model: string
+  owner: string
+  /** relay mode：1=聊天补全 3=嵌入 5=图像生成 7=语音合成 8=语音转录 10=重排序 11=PDF 解析 12=Anthropic */
+  type: number
+  rpm: number
+  /** 每 1K tokens 的金额（与余额同币种） */
+  inputPrice?: number
+  outputPrice?: number
+  cachedPrice?: number
+  /** 上下文窗口 */
+  contextTokens?: number
+  vision?: boolean
+  toolChoice?: boolean
+}
+
+/** 用量按天序列（unix 秒 + 数值） */
+export interface AiUsagePoint {
+  timestamp: number
+  requests: number
+  inputTokens: number
+  outputTokens: number
+  amount: number
+  exceptions: number
+}
+
+export interface AiUsageSummary {
+  requests: number
+  exceptions: number
+  inputTokens: number
+  outputTokens: number
+  amount: number
+  points: AiUsagePoint[]
+}
+
+export interface AiProxyOverview {
+  /** OpenAI 兼容端点，如 https://aiproxy.usw-1.sealos.io/v1 */
+  endpoint: string
+  /** shellCoin | cny | usd */
+  currency: string
+  docUrl?: string
+  keys: AiKeyInfo[]
+  models: AiModelInfo[]
+  /** 近 7 天用量 */
+  usage: AiUsageSummary
+  fetchedAt: string
+}
+
 export interface WorkspaceInfo {
   uid: string
   /** 命名空间名（ns-xxx） */
@@ -345,6 +410,10 @@ export interface HeliosApi {
   getProjectDetail(name: string): Promise<ProjectDetail>
   getAppMonitor(name: string): Promise<AppMonitor>
   getPodLogs(pod: string, container?: string, previous?: boolean): Promise<string>
+  getAiProxyOverview(): Promise<AiProxyOverview>
+  createAiKey(name: string): Promise<AiKeyInfo>
+  setAiKeyEnabled(id: number, enabled: boolean): Promise<void>
+  deleteAiKey(id: number): Promise<void>
   getTemplates(): Promise<TemplateCatalog>
   listWorkspaces(): Promise<WorkspaceInfo[]>
   switchWorkspace(uid: string): Promise<SealosStatus>

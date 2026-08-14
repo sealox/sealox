@@ -18,7 +18,11 @@
 - 首次启动登录 Sealos 账号，复用 skill 现有能力：OAuth2 device flow，或粘贴
   kubeconfig。
 - 凭证沿用 skill 的约定存放在 `~/.sealos/`（kubeconfig + auth.json，0600），
-  Helios 与 use-sealos skill 互认登录态。
+  Helios 与 use-sealos skill 互认登录态。auth.json 里除 regional_token 外
+  另存 `app_token`（desktop 发给 iframe 应用的会话 JWT，internalJwtSecret
+  签名，aiproxy-web 等应用后端只认它）；登录与切换工作空间时随
+  regionToken/namespace-switch 响应一起落盘，旧登录态缺失时用
+  regional_token 重放一次 switch 无感补发。
 - 登录后默认进私人工作空间；侧边栏工作空间胶囊可切换同账号下的任意工作
   空间（走 desktop 同款 API：namespace/switch 换发 token 再取新 kubeconfig，
   落盘 `~/.sealos/` 与 skill 互认）。
@@ -93,6 +97,18 @@
 - **数据库**：KubeBlocks Cluster 列表——引擎、版本、阶段、所属实例。
 - **存储**：ObjectStorageBucket 列表——策略（私有/公开读/公开读写）、实际
   桶名、创建时间。
+- **AI Proxy**：交互对标 Vercel/Cloudflare AI Gateway 的"接入即文档"思路，
+  单页四区：
+  - 接入卡：OpenAI 兼容端点（`https://aiproxy.{region}/v1`）+ curl/Python/JS
+    示例代码（自动带第一个启用的 Key 与可用模型，复制即用）；
+  - 用量概览：近 7 天请求数/Tokens/花费/异常统计条 + 请求数/花费按天曲线
+    （`/api/user/dashboard?type=week`）；
+  - API Keys：行内创建（创建后金色高亮一次性提示复制）、sk- 打码展示/复制
+    全文、启用/禁用、行内二次确认删除（`/api/user/token*`）；
+  - 模型目录：搜索 + 厂商过滤 chips，类型/RPM/输入输出价（原始 /1K 换算
+    /1M 展示）（`/api/models/enabled`）。
+  - 数据源：aiproxy-web.{region} 的用户侧 BFF，鉴权用 desktop 应用会话
+    token（见工程约定）；30s 轮询。
 - **用户信息**：区域、API server、命名空间、工作空间、登录时间、kubeconfig
   路径；退出登录放在此页。
 - 数据规则：全部直读 Sealos 现有 API（namespace-scoped k8s API +

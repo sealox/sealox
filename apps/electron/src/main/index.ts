@@ -11,6 +11,7 @@ import {
   saveKubeconfigText,
   startDeviceLogin
 } from './sealos/auth'
+import { createAiKey, deleteAiKey, fetchAiProxyOverview, setAiKeyEnabled } from './sealos/aiproxy'
 import { fetchAppDetail, fetchAppMonitor, fetchPodLogs, fetchProjectDetail } from './sealos/details'
 import { fetchResources } from './sealos/resources'
 import { fetchTemplates } from './sealos/templates'
@@ -86,6 +87,12 @@ function registerIpc(): void {
   ipcMain.handle('sealos:pod-logs', (_event, pod: string, container?: string, previous?: boolean) =>
     fetchPodLogs(pod, container, previous)
   )
+  ipcMain.handle('sealos:aiproxy-overview', () => fetchAiProxyOverview())
+  ipcMain.handle('sealos:aiproxy-create-key', (_event, name: string) => createAiKey(name))
+  ipcMain.handle('sealos:aiproxy-key-status', (_event, id: number, enabled: boolean) =>
+    setAiKeyEnabled(id, enabled)
+  )
+  ipcMain.handle('sealos:aiproxy-delete-key', (_event, id: number) => deleteAiKey(id))
   ipcMain.handle('sealos:templates', () => fetchTemplates())
   ipcMain.handle('sealos:workspaces', () => listWorkspaces())
   ipcMain.handle('sealos:workspace-switch', (_event, uid: string) => switchWorkspace(uid))

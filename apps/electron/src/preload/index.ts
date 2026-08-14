@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
+  AiKeyInfo,
+  AiProxyOverview,
   AppDetail,
   AppMonitor,
   HeliosApi,
@@ -31,6 +33,12 @@ const helios: HeliosApi = {
     ipcRenderer.invoke('sealos:app-monitor', name),
   getPodLogs: (pod: string, container?: string, previous?: boolean): Promise<string> =>
     ipcRenderer.invoke('sealos:pod-logs', pod, container, previous),
+  getAiProxyOverview: (): Promise<AiProxyOverview> => ipcRenderer.invoke('sealos:aiproxy-overview'),
+  createAiKey: (name: string): Promise<AiKeyInfo> =>
+    ipcRenderer.invoke('sealos:aiproxy-create-key', name),
+  setAiKeyEnabled: (id: number, enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke('sealos:aiproxy-key-status', id, enabled),
+  deleteAiKey: (id: number): Promise<void> => ipcRenderer.invoke('sealos:aiproxy-delete-key', id),
   getTemplates: (): Promise<TemplateCatalog> => ipcRenderer.invoke('sealos:templates'),
   listWorkspaces: (): Promise<WorkspaceInfo[]> => ipcRenderer.invoke('sealos:workspaces'),
   switchWorkspace: (uid: string): Promise<SealosStatus> =>
