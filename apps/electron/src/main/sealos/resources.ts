@@ -436,3 +436,37 @@ export async function fetchResources(): Promise<ResourceSnapshot> {
     warnings
   }
 }
+
+/** 与 fetchResources 同一份 ResourceQuota；读失败或没有数字时返回空数组（调用方不得因此拦截） */
+export async function fetchNamespaceQuota(): Promise<QuotaItem[]> {
+  const kc = new k8s.KubeConfig()
+  kc.loadFromFile(KUBECONFIG_PATH)
+  const context = kc.getContextObject(kc.getCurrentContext())
+  const namespace = context?.namespace
+  if (!namespace) throw new Error('kubeconfig 里没有 namespace，无法确定工作空间')
+  const core = kc.makeApiClient(k8s.CoreV1Api)
+  return listQuota(core, namespace, [])
+}
+
+/** 当前 ns 是否已有该 instances.app.sealos.io（409 落地确认，与 listProjects 同源） */
+export async function instanceExists(name: string): Promise<boolean> {
+  const kc = new k8s.KubeConfig()
+  kc.loadFromFile(KUBECONFIG_PATH)
+  const context = kc.getContextObject(kc.getCurrentContext())
+  const namespace = context?.namespace
+  if (!namespace) throw new Error('kubeconfig 里没有 namespace，无法确定工作空间')
+  const custom = kc.makeApiClient(k8s.CustomObjectsApi)
+  try {
+    await custom.getNamespacedCustomObject({
+      group: 'app.sealos.io',
+      version: 'v1',
+      namespace,
+      plural: 'instances',
+      name
+    })
+    return true
+  } catch (err) {
+    if ((err as { code?: number }).code === 404) return false
+    throw err
+  }
+}

@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { TemplateCatalog, TemplateInfo } from '../../../shared/types'
+import type {
+  TemplateArgDef,
+  TemplateCatalog,
+  TemplateDetail,
+  TemplateInfo
+} from '../../../shared/types'
 
 const PAGE_SIZE = 12
 const ALL_CATEGORY = '全部'
@@ -17,6 +22,11 @@ const PREFERRED_ORDER = [
 
 type SortKey = 'deploys' | 'name'
 
+interface Props {
+  workspaceName: string
+  onDeployed: (instanceName: string) => void
+}
+
 function openUrl(url: string): void {
   void window.helios.openExternal(url)
 }
@@ -27,6 +37,23 @@ function pageItems(current: number, total: number): number[] {
   if (current > 1) pages.add(current - 1)
   if (current < total) pages.add(current + 1)
   return [...pages].sort((a, b) => a - b)
+}
+
+function requiredArgEntries(args: Record<string, TemplateArgDef>): Array<[string, TemplateArgDef]> {
+  return Object.entries(args).filter(([, def]) => def.required && !def.default.trim())
+}
+
+function isSecretArg(name: string, type: string): boolean {
+  if (type.toLowerCase() === 'password') return true
+  return /key|secret|token|password/i.test(name)
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+function isMissingArgsMessage(msg: string): boolean {
+  return msg.includes('缺少必填参数')
 }
 
 function TemplateIcon({ tpl, size }: { tpl: TemplateInfo; size: number }): React.JSX.Element {
@@ -53,11 +80,72 @@ function TemplateIcon({ tpl, size }: { tpl: TemplateInfo; size: number }): React
   )
 }
 
-function TemplateCard({ tpl }: { tpl: TemplateInfo }): React.JSX.Element {
+function TemplateCard({
+  tpl,
+  workspaceName,
+  onDeployed
+}: {
+  tpl: TemplateInfo
+  workspaceName: string
+  onDeployed: (instanceName: string) => void
+}): React.JSX.Element {
   const [shotFailed, setShotFailed] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const [detail, setDetail] = useState<TemplateDetail | null>(null)
+  const [showArgs, setShowArgs] = useState(false)
+  const [values, setValues] = useState<Record<string, string>>({})
+
+  const argFields = detail ? requiredArgEntries(detail.args) : []
+  const argsFilled =
+    argFields.length > 0 && argFields.every(([key]) => Boolean(values[key]?.trim()))
+
+  const handleDeploy = async (): Promise<void> => {
+    if (submitting) return
+    setError('')
+    setSubmitting(true)
+    try {
+      let current = detail
+      if (!current) {
+        current = await window.helios.getTemplateDetail(tpl.templateName)
+        setDetail(current)
+      }
+      const fields = requiredArgEntries(current.args)
+      if (fields.length > 0) {
+        const missing = fields.filter(([key]) => !values[key]?.trim())
+        if (missing.length > 0) {
+          setShowArgs(true)
+          return
+        }
+      }
+      const args: Record<string, string> = {}
+      for (const [key] of fields) {
+        const value = values[key]?.trim()
+        if (value) args[key] = value
+      }
+      const { instanceName } = await window.helios.deployTemplate(tpl.templateName, args)
+      onDeployed(instanceName)
+    } catch (err) {
+      const msg = errorMessage(err)
+      setError(msg)
+      if (isMissingArgsMessage(msg)) {
+        setShowArgs(true)
+        if (!detail) {
+          try {
+            const next = await window.helios.getTemplateDetail(tpl.templateName)
+            setDetail(next)
+          } catch {
+            // 卡片上已有缺参文案
+          }
+        }
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
-    <article className="tpl-card">
+    <article className={`tpl-card${showArgs || submitting ? ' is-open' : ''}`}>
       <div className="tpl-shot">
         {tpl.screenshot && !shotFailed ? (
           <img src={tpl.screenshot} alt="" loading="lazy" onError={() => setShotFailed(true)} />
@@ -86,19 +174,43 @@ function TemplateCard({ tpl }: { tpl: TemplateInfo }): React.JSX.Element {
           <span className="chip">{tpl.category}</span>
         </div>
         <p className="tpl-desc">{tpl.description}</p>
-        <button
-          className="tpl-deploy"
-          title="在 Sealos 控制台部署此模板"
-          onClick={() => openUrl(tpl.deployUrl)}
+        <form
+          className="tpl-deploy-form"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void handleDeploy()
+          }}
         >
-          部署
-        </button>
+          {showArgs && argFields.length > 0 && (
+            <div className="tpl-args">
+              {argFields.map(([key, def]) => (
+                <label key={key} className="tpl-arg">
+                  <span>{def.description || key}</span>
+                  <input
+                    className="tpl-arg-input"
+                    type={isSecretArg(key, def.type) ? 'password' : 'text'}
+                    name={key}
+                    value={values[key] ?? ''}
+                    required
+                    autoComplete="off"
+                    disabled={submitting}
+                    onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
+                  />
+                </label>
+              ))}
+            </div>
+          )}
+          {error && <div className="tpl-card-error">{error}</div>}
+          <button className="tpl-deploy" type="submit" disabled={submitting}>
+            {submitting ? '提交中' : argsFilled ? `部署到 ${workspaceName}` : '部署'}
+          </button>
+        </form>
       </div>
     </article>
   )
 }
 
-function TemplatesTab(): React.JSX.Element {
+function TemplatesTab({ workspaceName, onDeployed }: Props): React.JSX.Element {
   const [catalog, setCatalog] = useState<TemplateCatalog | null>(null)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
@@ -234,7 +346,12 @@ function TemplatesTab(): React.JSX.Element {
       ) : (
         <div className="tpl-grid">
           {visible.map((tpl) => (
-            <TemplateCard key={tpl.slug} tpl={tpl} />
+            <TemplateCard
+              key={tpl.slug}
+              tpl={tpl}
+              workspaceName={workspaceName}
+              onDeployed={onDeployed}
+            />
           ))}
         </div>
       )}

@@ -853,7 +853,13 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
               </header>
               <div className="page-body">
                 {tab === 'templates' ? (
-                  <TemplatesTab />
+                  <TemplatesTab
+                    workspaceName={workspaceLabel}
+                    onDeployed={(instanceName) => {
+                      openProject(instanceName)
+                      refresh()
+                    }}
+                  />
                 ) : tab === 'aiproxy' ? (
                   <AiProxyTab />
                 ) : (

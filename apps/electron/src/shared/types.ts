@@ -393,6 +393,32 @@ export interface TemplateCatalog {
   templates: TemplateInfo[]
 }
 
+/** GET template.{region}/api/v2alpha/templates/{name} 的 args 项（即 spec.inputs） */
+export interface TemplateArgDef {
+  description: string
+  type: string
+  default: string
+  required: boolean
+}
+
+/** 同上接口的 quota：cpu 核、memory/storage GiB */
+export interface TemplateQuota {
+  cpu: number
+  memory: number
+  storage: number
+  nodeport: number
+}
+
+export interface TemplateDetail {
+  name: string
+  args: Record<string, TemplateArgDef>
+  quota: TemplateQuota
+}
+
+export interface TemplateDeployResult {
+  instanceName: string
+}
+
 export interface RegionOption {
   url: string
   label: string
@@ -512,6 +538,8 @@ export interface HeliosApi {
   setAiKeyEnabled(id: number, enabled: boolean): Promise<void>
   deleteAiKey(id: number): Promise<void>
   getTemplates(): Promise<TemplateCatalog>
+  getTemplateDetail(templateName: string): Promise<TemplateDetail>
+  deployTemplate(templateName: string, args?: Record<string, string>): Promise<TemplateDeployResult>
   listWorkspaces(): Promise<WorkspaceInfo[]>
   switchWorkspace(uid: string): Promise<SealosStatus>
   getWorkspaceDetails(uid: string): Promise<WorkspaceDetails>

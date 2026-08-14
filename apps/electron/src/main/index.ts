@@ -27,7 +27,7 @@ import {
 import { createAiKey, deleteAiKey, fetchAiProxyOverview, setAiKeyEnabled } from './sealos/aiproxy'
 import { fetchAppDetail, fetchAppMonitor, fetchPodLogs, fetchProjectDetail } from './sealos/details'
 import { fetchResources } from './sealos/resources'
-import { fetchTemplates } from './sealos/templates'
+import { deployTemplate, fetchTemplateDetail, fetchTemplates } from './sealos/templates'
 import {
   createWorkspace,
   getInviteLink,
@@ -115,6 +115,14 @@ function registerIpc(): void {
   )
   ipcMain.handle('sealos:aiproxy-delete-key', (_event, id: number) => deleteAiKey(id))
   ipcMain.handle('sealos:templates', () => fetchTemplates())
+  ipcMain.handle('sealos:template-detail', (_event, templateName: string) =>
+    fetchTemplateDetail(templateName)
+  )
+  ipcMain.handle(
+    'sealos:template-deploy',
+    (_event, templateName: string, args?: Record<string, string>) =>
+      deployTemplate(templateName, args)
+  )
   ipcMain.handle('sealos:workspaces', () => listWorkspaces())
   ipcMain.handle('sealos:workspace-switch', async (_event, uid: string) => {
     const status = await switchWorkspace(uid)

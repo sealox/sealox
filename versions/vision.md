@@ -4,7 +4,7 @@
 
 Helios 不是又一个 Sealos 控制台，也不是通用 ChatGPT。它是 **Sealos 的 agent 操作台**：对话负责改变世界，侧栏负责诚实展示那个世界。内部 MVP，用来证明 agent-first 的部署体验优于 Sealos 控制台。
 
-版本记录：[0.1 baseline](./0.1-baseline.md)、[0.2 agent chat](./0.2-agent-chat.md)。
+版本记录：[0.1 baseline](./0.1-baseline.md)、[0.2 agent chat](./0.2-agent-chat.md)、[0.3 templates](./0.3-templates.md)。
 
 ## 为什么存在
 

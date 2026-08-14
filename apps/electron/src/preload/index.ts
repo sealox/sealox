@@ -18,6 +18,8 @@ import type {
   ResourceSnapshot,
   SealosStatus,
   TemplateCatalog,
+  TemplateDetail,
+  TemplateDeployResult,
   WorkspaceDetails,
   WorkspaceInfo
 } from '../shared/types'
@@ -46,6 +48,13 @@ const helios: HeliosApi = {
     ipcRenderer.invoke('sealos:aiproxy-key-status', id, enabled),
   deleteAiKey: (id: number): Promise<void> => ipcRenderer.invoke('sealos:aiproxy-delete-key', id),
   getTemplates: (): Promise<TemplateCatalog> => ipcRenderer.invoke('sealos:templates'),
+  getTemplateDetail: (templateName: string): Promise<TemplateDetail> =>
+    ipcRenderer.invoke('sealos:template-detail', templateName),
+  deployTemplate: (
+    templateName: string,
+    args?: Record<string, string>
+  ): Promise<TemplateDeployResult> =>
+    ipcRenderer.invoke('sealos:template-deploy', templateName, args),
   listWorkspaces: (): Promise<WorkspaceInfo[]> => ipcRenderer.invoke('sealos:workspaces'),
   switchWorkspace: (uid: string): Promise<SealosStatus> =>
     ipcRenderer.invoke('sealos:workspace-switch', uid),
