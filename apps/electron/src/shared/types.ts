@@ -414,12 +414,66 @@ export interface ChatActivity {
   status: ChatActivityStatus
 }
 
+export interface ChatQuestionOption {
+  id: string
+  label: string
+}
+
+export interface ChatQuestion {
+  requestId: string
+  kind: string
+  prompt: string
+  options?: ChatQuestionOption[]
+  allowFreeform?: boolean
+  toolName?: string
+}
+
+export interface ChatInputResponse {
+  requestId: string
+  optionId?: string
+  text?: string
+}
+
+export interface ChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  text: string
+  reasoning?: string
+  activities?: ChatActivity[]
+  pending?: boolean
+  error?: string
+}
+
+export interface ChatListItem {
+  id: string
+  title: string
+  updatedAt: string
+}
+
+export interface ChatConversation {
+  id: string
+  title: string
+  workspaceId: string
+  eveSessionId: string | null
+  streamIndex: number
+  messages: ChatMessage[]
+  questions?: ChatQuestion[]
+  createdAt: string
+  updatedAt: string
+}
+
 export type ChatEvent =
-  | { type: 'delta'; text: string }
-  | { type: 'reasoning'; text: string }
-  | { type: 'activity'; item: ChatActivity }
-  | { type: 'done' }
-  | { type: 'error'; message: string }
+  | { type: 'snapshot'; conversation: ChatConversation }
+  | { type: 'delta'; conversationId: string; text: string }
+  | { type: 'reasoning'; conversationId: string; text: string }
+  | { type: 'activity'; conversationId: string; item: ChatActivity }
+  | { type: 'question'; conversationId: string; questions: ChatQuestion[] }
+  | { type: 'waiting'; conversationId: string }
+  | { type: 'done'; conversationId: string }
+  | { type: 'cancelled'; conversationId: string }
+  | { type: 'error'; conversationId: string; message: string }
+  | { type: 'deleted'; conversationId: string }
+  | { type: 'index'; workspaceId: string; items: ChatListItem[] }
 
 export interface HeliosApi {
   getStatus(): Promise<SealosStatus>
@@ -447,7 +501,12 @@ export interface HeliosApi {
   openExternal(url: string): Promise<void>
   copyText(text: string): Promise<void>
   getAgentStatus(): Promise<AgentStatus>
-  sendHomeMessage(text: string): Promise<void>
+  listChats(): Promise<ChatListItem[]>
+  getChat(id: string): Promise<ChatConversation | null>
+  sendChatMessage(conversationId: string, text: string): Promise<void>
+  cancelChat(conversationId: string): Promise<void>
+  respondChat(conversationId: string, responses: ChatInputResponse[]): Promise<void>
+  deleteChat(conversationId: string): Promise<void>
   onLoginEvent(listener: (event: LoginEvent) => void): () => void
   onAgentStatus(listener: (status: AgentStatus) => void): () => void
   onChatEvent(listener: (event: ChatEvent) => void): () => void

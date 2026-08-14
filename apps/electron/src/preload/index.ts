@@ -6,7 +6,10 @@ import type {
   AiProxyOverview,
   AppDetail,
   AppMonitor,
+  ChatConversation,
   ChatEvent,
+  ChatInputResponse,
+  ChatListItem,
   HeliosApi,
   LoginEvent,
   ProjectDetail,
@@ -56,7 +59,17 @@ const helios: HeliosApi = {
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('sealos:open-external', url),
   copyText: (text: string): Promise<void> => ipcRenderer.invoke('helios:copy-text', text),
   getAgentStatus: (): Promise<AgentStatus> => ipcRenderer.invoke('helios:agent-status'),
-  sendHomeMessage: (text: string): Promise<void> => ipcRenderer.invoke('helios:chat-send', text),
+  listChats: (): Promise<ChatListItem[]> => ipcRenderer.invoke('helios:chat-list'),
+  getChat: (id: string): Promise<ChatConversation | null> =>
+    ipcRenderer.invoke('helios:chat-get', id),
+  sendChatMessage: (conversationId: string, text: string): Promise<void> =>
+    ipcRenderer.invoke('helios:chat-send', conversationId, text),
+  cancelChat: (conversationId: string): Promise<void> =>
+    ipcRenderer.invoke('helios:chat-cancel', conversationId),
+  respondChat: (conversationId: string, responses: ChatInputResponse[]): Promise<void> =>
+    ipcRenderer.invoke('helios:chat-respond', conversationId, responses),
+  deleteChat: (conversationId: string): Promise<void> =>
+    ipcRenderer.invoke('helios:chat-delete', conversationId),
   onLoginEvent: (listener: (event: LoginEvent) => void): (() => void) => {
     const wrapped = (_: Electron.IpcRendererEvent, event: LoginEvent): void => listener(event)
     ipcRenderer.on('sealos:login-event', wrapped)

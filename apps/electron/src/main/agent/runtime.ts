@@ -1,11 +1,29 @@
 import { app, BrowserWindow } from 'electron'
 import { spawn, type ChildProcess, execFileSync } from 'child_process'
-import { randomBytes } from 'crypto'
+import { randomBytes, randomUUID } from 'crypto'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import type { AgentStatus, ChatActivity, ChatEvent } from '../../shared/types'
+import type {
+  AgentStatus,
+  ChatActivity,
+  ChatConversation,
+  ChatEvent,
+  ChatInputResponse,
+  ChatListItem,
+  ChatMessage,
+  ChatQuestion
+} from '../../shared/types'
 import { getStatus } from '../sealos/auth'
 import { ensureHeliosKey } from '../sealos/aiproxy'
+import {
+  currentWorkspaceId,
+  deleteConversation,
+  isConversationId,
+  listConversations,
+  readConversation,
+  titleFromMessage,
+  writeConversation
+} from './chat-store'
 
 const EVE_HOST = '127.0.0.1'
 const EVE_PORT = 24721
@@ -16,13 +34,26 @@ const STOP_TIMEOUT_MS = 4_000
 let child: ChildProcess | null = null
 let status: AgentStatus = { state: 'stopped' }
 let startEpoch = 0
-let sessionId: string | null = null
-let streamAbort: AbortController | null = null
-let turnBusy = false
-let turnWaiter: {
-  resolve: () => void
-  reject: (err: Error) => void
-} | null = null
+
+interface LiveSession {
+  conversationId: string
+  workspaceId: string
+  eveSessionId: string | null
+  streamIndex: number
+  streamAbort: AbortController | null
+  turnBusy: boolean
+  turnWaiter: {
+    resolve: () => void
+    reject: (err: Error) => void
+  } | null
+  lastAssistant: string
+  answerByStep: Map<number, string>
+  reasoningByStep: Map<number, string>
+  activities: Map<string, ChatActivity>
+  record: ChatConversation
+}
+
+const live = new Map<string, LiveSession>()
 
 function broadcast(channel: string, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -105,7 +136,15 @@ function eveSpawnArgs(root: string): { args: string[]; extraEnv: NodeJS.ProcessE
   }
   extraEnv.PORT = String(EVE_PORT)
   return {
-    args: [join(root, 'node_modules/eve/bin/eve.js'), 'dev', '--no-ui', '--host', EVE_HOST, '--port', String(EVE_PORT)],
+    args: [
+      join(root, 'node_modules/eve/bin/eve.js'),
+      'dev',
+      '--no-ui',
+      '--host',
+      EVE_HOST,
+      '--port',
+      String(EVE_PORT)
+    ],
     extraEnv
   }
 }
@@ -162,34 +201,66 @@ async function waitForHealth(signal: AbortSignal): Promise<void> {
   throw new Error(`eve 启动超时：${lastError}`)
 }
 
+function cloneRecord(record: ChatConversation): ChatConversation {
+  return JSON.parse(JSON.stringify(record)) as ChatConversation
+}
+
 function emitChat(event: ChatEvent): void {
   broadcast('helios:chat-event', event)
 }
 
-function failTurn(message: string): void {
-  const waiter = turnWaiter
-  turnWaiter = null
+function emitSnapshot(session: LiveSession): void {
+  emitChat({ type: 'snapshot', conversation: cloneRecord(session.record) })
+}
+
+async function emitIndex(workspaceId: string): Promise<void> {
+  const items = await listConversations(workspaceId)
+  emitChat({ type: 'index', workspaceId, items })
+}
+
+async function persist(session: LiveSession): Promise<void> {
+  if (live.get(session.conversationId) !== session) return
+  session.record.updatedAt = new Date().toISOString()
+  session.record.streamIndex = session.streamIndex
+  session.record.eveSessionId = session.eveSessionId
+  await writeConversation(session.record)
+  await emitIndex(session.workspaceId)
+}
+
+function lastAssistantMessage(session: LiveSession): ChatMessage | undefined {
+  for (let i = session.record.messages.length - 1; i >= 0; i -= 1) {
+    if (session.record.messages[i].role === 'assistant') return session.record.messages[i]
+  }
+  return undefined
+}
+
+function resetTurnTrace(session: LiveSession): void {
+  session.lastAssistant = ''
+  session.answerByStep = new Map()
+  session.reasoningByStep = new Map()
+  session.activities.clear()
+}
+
+function settleTurn(session: LiveSession, err?: Error): void {
+  const waiter = session.turnWaiter
+  session.turnWaiter = null
+  session.turnBusy = false
   if (!waiter) return
-  emitChat({ type: 'error', message })
-  waiter.reject(new Error(message))
+  if (err) waiter.reject(err)
+  else waiter.resolve()
 }
 
-function settleTurn(): void {
-  emitChat({ type: 'done' })
-  turnWaiter?.resolve()
-  turnWaiter = null
-}
-
-let lastAssistant = ''
-let answerByStep = new Map<number, string>()
-let reasoningByStep = new Map<number, string>()
-const activities = new Map<string, ChatActivity>()
-
-function resetTurnTrace(): void {
-  lastAssistant = ''
-  answerByStep = new Map()
-  reasoningByStep = new Map()
-  activities.clear()
+function failTurn(session: LiveSession, message: string): void {
+  const last = lastAssistantMessage(session)
+  if (last) {
+    last.pending = false
+    last.error = message
+  }
+  session.record.questions = undefined
+  emitChat({ type: 'error', conversationId: session.conversationId, message })
+  emitSnapshot(session)
+  void persist(session)
+  settleTurn(session, new Error(message))
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -214,11 +285,6 @@ function joinSteps(blocks: Map<number, string>): string {
     .join('\n\n')
 }
 
-function emitAnswer(): void {
-  lastAssistant = joinSteps(answerByStep)
-  emitChat({ type: 'delta', text: lastAssistant })
-}
-
 function describeAction(action: Record<string, unknown>): Pick<ChatActivity, 'label' | 'detail'> {
   const kind = asString(action.kind)
   const input = asRecord(action.input)
@@ -228,14 +294,16 @@ function describeAction(action: Record<string, unknown>): Pick<ChatActivity, 'la
   if (kind === 'subagent-call' || kind === 'remote-agent-call') {
     return {
       label: '子任务',
-      detail: asString(action.subagentName) ?? asString(action.remoteAgentName) ?? asString(action.name)
+      detail:
+        asString(action.subagentName) ?? asString(action.remoteAgentName) ?? asString(action.name)
     }
   }
   const tool = asString(action.toolName) ?? 'tool'
   if (tool === 'bash') return { label: 'bash', detail: asString(input?.command) }
   if (tool === 'read_file') return { label: '读文件', detail: asString(input?.path) }
   if (tool === 'write_file') return { label: '写文件', detail: asString(input?.path) }
-  if (tool === 'glob') return { label: '找文件', detail: asString(input?.pattern) ?? asString(input?.glob) }
+  if (tool === 'glob')
+    return { label: '找文件', detail: asString(input?.pattern) ?? asString(input?.glob) }
   if (tool === 'grep') return { label: '搜内容', detail: asString(input?.pattern) }
   if (tool === 'web_fetch') return { label: '抓取网页', detail: asString(input?.url) }
   if (tool === 'web_search') return { label: '搜索', detail: asString(input?.query) }
@@ -244,14 +312,19 @@ function describeAction(action: Record<string, unknown>): Pick<ChatActivity, 'la
   return { label: tool, detail: input ? clip(JSON.stringify(input)) : undefined }
 }
 
-function emitActivity(item: ChatActivity): void {
+function emitActivity(session: LiveSession, item: ChatActivity): void {
   const detail = item.detail ? clip(item.detail) : undefined
   const next = { ...item, detail }
-  activities.set(next.id, next)
-  emitChat({ type: 'activity', item: next })
+  session.activities.set(next.id, next)
+  const last = lastAssistantMessage(session)
+  if (last) last.activities = [...session.activities.values()]
+  emitChat({ type: 'activity', conversationId: session.conversationId, item: next })
 }
 
-function handleActionsRequested(data: Record<string, unknown> | undefined): void {
+function handleActionsRequested(
+  session: LiveSession,
+  data: Record<string, unknown> | undefined
+): void {
   const list = data?.actions
   if (!Array.isArray(list)) return
   for (const raw of list) {
@@ -259,21 +332,24 @@ function handleActionsRequested(data: Record<string, unknown> | undefined): void
     if (!action) continue
     const id = asString(action.callId)
     if (!id) continue
-    emitActivity({ id, status: 'running', ...describeAction(action) })
+    emitActivity(session, { id, status: 'running', ...describeAction(action) })
   }
 }
 
-function handleActionResult(data: Record<string, unknown> | undefined): void {
+function handleActionResult(session: LiveSession, data: Record<string, unknown> | undefined): void {
   const result = asRecord(data?.result)
   const id = asString(result?.callId)
   if (!result || !id) return
-  const prev = activities.get(id)
-  const status = data?.status === 'failed' || data?.status === 'rejected' || result?.isError === true ? 'error' : 'done'
+  const prev = session.activities.get(id)
+  const status =
+    data?.status === 'failed' || data?.status === 'rejected' || result?.isError === true
+      ? 'error'
+      : 'done'
   const fromResult =
     asString(result?.kind) === 'load-skill-result'
       ? { label: '加载 skill', detail: asString(result?.name) }
       : describeAction(result)
-  emitActivity({
+  emitActivity(session, {
     id,
     status,
     label: prev?.label ?? fromResult.label,
@@ -281,45 +357,63 @@ function handleActionResult(data: Record<string, unknown> | undefined): void {
   })
 }
 
-function inputRequestText(data: Record<string, unknown> | undefined): string {
+function parseQuestions(data: Record<string, unknown> | undefined): ChatQuestion[] {
   const requests = data?.requests
-  if (!Array.isArray(requests)) return ''
-  const lines: string[] = []
+  if (!Array.isArray(requests)) return []
+  const questions: ChatQuestion[] = []
   for (const item of requests) {
-    if (!item || typeof item !== 'object') continue
-    const req = item as Record<string, unknown>
-    if (typeof req.prompt === 'string' && req.prompt.trim()) {
-      lines.push(req.prompt.trim())
-      const options = req.options
-      if (Array.isArray(options)) {
-        for (const option of options) {
-          if (!option || typeof option !== 'object') continue
-          const opt = option as Record<string, unknown>
-          const label = typeof opt.label === 'string' ? opt.label : typeof opt.id === 'string' ? opt.id : ''
-          if (label) lines.push(`- ${label}`)
-        }
+    const req = asRecord(item)
+    if (!req) continue
+    const requestId = asString(req.requestId)
+    if (!requestId) continue
+    const kind = asString(req.kind) ?? 'question'
+    const prompt =
+      asString(req.prompt) ??
+      (kind === 'tool-approval'
+        ? `需要确认才能执行 ${asString(req.toolName) ?? 'tool'}`
+        : '需要你的回复')
+    const options: ChatQuestion['options'] = []
+    if (Array.isArray(req.options)) {
+      for (const raw of req.options) {
+        const opt = asRecord(raw)
+        if (!opt) continue
+        const id = asString(opt.id)
+        if (!id) continue
+        options.push({ id, label: asString(opt.label) ?? id })
       }
-      continue
     }
-    if (req.kind === 'tool-approval') {
-      const tool = typeof req.toolName === 'string' ? req.toolName : 'tool'
-      lines.push(`需要确认才能执行 ${tool}。回复 approve 或 cancel。`)
+    if (options.length === 0 && kind === 'tool-approval') {
+      options.push({ id: 'approve', label: '允许' }, { id: 'cancel', label: '拒绝' })
     }
+    questions.push({
+      requestId,
+      kind,
+      prompt,
+      options: options.length > 0 ? options : undefined,
+      allowFreeform: req.allowFreeform === true,
+      toolName: asString(req.toolName)
+    })
   }
-  return lines.join('\n')
+  return questions
 }
 
-function handleStreamEvent(event: { type?: string; data?: Record<string, unknown> }): void {
+function handleStreamEvent(
+  session: LiveSession,
+  event: { type?: string; data?: Record<string, unknown> }
+): void {
   switch (event.type) {
     case 'turn.started':
-      resetTurnTrace()
+      resetTurnTrace(session)
       break
     case 'reasoning.appended': {
       const step = typeof event.data?.stepIndex === 'number' ? event.data.stepIndex : 0
       const soFar = event.data?.reasoningSoFar
       if (typeof soFar === 'string') {
-        reasoningByStep.set(step, soFar)
-        emitChat({ type: 'reasoning', text: joinSteps(reasoningByStep) })
+        session.reasoningByStep.set(step, soFar)
+        const text = joinSteps(session.reasoningByStep)
+        const last = lastAssistantMessage(session)
+        if (last) last.reasoning = text
+        emitChat({ type: 'reasoning', conversationId: session.conversationId, text })
       }
       break
     }
@@ -327,36 +421,66 @@ function handleStreamEvent(event: { type?: string; data?: Record<string, unknown
       const step = typeof event.data?.stepIndex === 'number' ? event.data.stepIndex : 0
       const soFar = event.data?.messageSoFar
       if (typeof soFar === 'string') {
-        answerByStep.set(step, soFar)
-        emitAnswer()
+        session.answerByStep.set(step, soFar)
+        session.lastAssistant = joinSteps(session.answerByStep)
+        const last = lastAssistantMessage(session)
+        if (last) {
+          last.text = session.lastAssistant
+          last.error = undefined
+        }
+        emitChat({
+          type: 'delta',
+          conversationId: session.conversationId,
+          text: session.lastAssistant
+        })
       }
       break
     }
     case 'actions.requested':
-      handleActionsRequested(event.data)
+      handleActionsRequested(session, event.data)
       break
     case 'action.result':
-      handleActionResult(event.data)
+      handleActionResult(session, event.data)
       break
     case 'input.requested': {
-      const question = inputRequestText(event.data)
-      if (!question) break
-      const text = lastAssistant ? `${lastAssistant}\n\n${question}` : question
-      lastAssistant = text
-      emitChat({ type: 'delta', text })
+      const questions = parseQuestions(event.data)
+      if (questions.length === 0) break
+      session.record.questions = questions
+      emitChat({ type: 'question', conversationId: session.conversationId, questions })
+      break
+    }
+    case 'turn.cancelled': {
+      const last = lastAssistantMessage(session)
+      if (last) last.pending = false
+      session.record.questions = undefined
+      emitChat({ type: 'cancelled', conversationId: session.conversationId })
+      emitSnapshot(session)
+      void persist(session)
+      settleTurn(session)
       break
     }
     case 'session.waiting':
-    case 'session.completed':
-      settleTurn()
+    case 'session.completed': {
+      if (!session.turnWaiter) break
+      const last = lastAssistantMessage(session)
+      if (last) last.pending = false
+      if (session.record.questions?.length) {
+        emitChat({ type: 'waiting', conversationId: session.conversationId })
+      } else {
+        emitChat({ type: 'done', conversationId: session.conversationId })
+      }
+      emitSnapshot(session)
+      void persist(session)
+      settleTurn(session)
       break
+    }
     case 'turn.failed':
     case 'session.failed': {
       const message =
         (typeof event.data?.message === 'string' && event.data.message) ||
         (typeof event.data?.error === 'string' && event.data.error) ||
         '模型调用失败'
-      failTurn(message)
+      failTurn(session, message)
       break
     }
     default:
@@ -364,13 +488,17 @@ function handleStreamEvent(event: { type?: string; data?: Record<string, unknown
   }
 }
 
-async function followSession(id: string, signal: AbortSignal): Promise<void> {
-  let startIndex = 0
+async function followSession(session: LiveSession, signal: AbortSignal): Promise<void> {
   while (!signal.aborted) {
-    const resp = await fetch(`${EVE_ORIGIN}/eve/v1/session/${id}/stream?startIndex=${startIndex}`, {
-      headers: eveAuthHeaders(),
-      signal
-    })
+    const id = session.eveSessionId
+    if (!id) return
+    const resp = await fetch(
+      `${EVE_ORIGIN}/eve/v1/session/${id}/stream?startIndex=${session.streamIndex}`,
+      {
+        headers: eveAuthHeaders(),
+        signal
+      }
+    )
     if (!resp.ok || !resp.body) {
       throw new Error(`eve 事件流失败（HTTP ${resp.status}）`)
     }
@@ -385,9 +513,12 @@ async function followSession(id: string, signal: AbortSignal): Promise<void> {
       buf = lines.pop() ?? ''
       for (const line of lines) {
         if (!line.trim()) continue
-        startIndex += 1
+        session.streamIndex += 1
         try {
-          handleStreamEvent(JSON.parse(line) as { type?: string; data?: Record<string, unknown> })
+          handleStreamEvent(
+            session,
+            JSON.parse(line) as { type?: string; data?: Record<string, unknown> }
+          )
         } catch {
           // 忽略半包或非 JSON 行
         }
@@ -397,73 +528,301 @@ async function followSession(id: string, signal: AbortSignal): Promise<void> {
   }
 }
 
-async function postSession(path: string, message: string): Promise<{ sessionId: string }> {
+function openStream(session: LiveSession): void {
+  if (session.streamAbort || !session.eveSessionId) return
+  session.streamAbort = new AbortController()
+  const signal = session.streamAbort.signal
+  const conversationId = session.conversationId
+  void followSession(session, signal).catch((err: unknown) => {
+    if (signal.aborted) return
+    const current = live.get(conversationId)
+    if (current !== session) return
+    session.streamAbort = null
+    session.eveSessionId = null
+    failTurn(session, err instanceof Error ? err.message : String(err))
+  })
+}
+
+function closeStream(session: LiveSession): void {
+  session.streamAbort?.abort()
+  session.streamAbort = null
+}
+
+class EveHttpError extends Error {
+  constructor(
+    message: string,
+    readonly httpStatus: number,
+    readonly code?: string
+  ) {
+    super(message)
+  }
+}
+
+function isSessionGone(err: unknown): boolean {
+  return (
+    err instanceof EveHttpError && (err.httpStatus === 409 || err.code === 'session_not_active')
+  )
+}
+
+type SessionPostBody = { message: string } | { inputResponses: ChatInputResponse[] }
+
+async function postSession(path: string, body: SessionPostBody): Promise<{ sessionId: string }> {
   const resp = await fetch(`${EVE_ORIGIN}${path}`, {
     method: 'POST',
     headers: eveAuthHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ message }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(30_000)
   })
-  const body = (await resp.json().catch(() => null)) as {
+  const parsed = (await resp.json().catch(() => null)) as {
     ok?: boolean
     sessionId?: string
     error?: string
     code?: string
   } | null
-  if (!resp.ok || !body?.sessionId) {
-    throw new Error(body?.error || `eve 会话请求失败（HTTP ${resp.status}）`)
+  if (!resp.ok || !parsed?.sessionId) {
+    throw new EveHttpError(
+      parsed?.error || `eve 会话请求失败（HTTP ${resp.status}）`,
+      resp.status,
+      parsed?.code
+    )
   }
-  return { sessionId: body.sessionId }
+  return { sessionId: parsed.sessionId }
 }
 
-function openStream(id: string): void {
-  streamAbort?.abort()
-  streamAbort = new AbortController()
-  const signal = streamAbort.signal
-  void followSession(id, signal).catch((err: unknown) => {
-    if (signal.aborted) return
-    if (sessionId === id) sessionId = null
-    failTurn(err instanceof Error ? err.message : String(err))
+async function postCancel(sessionId: string): Promise<void> {
+  const resp = await fetch(`${EVE_ORIGIN}/eve/v1/session/${sessionId}/cancel`, {
+    method: 'POST',
+    headers: eveAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: '{}',
+    signal: AbortSignal.timeout(15_000)
+  })
+  if (!resp.ok && resp.status !== 200 && resp.status !== 202) {
+    const parsed = (await resp.json().catch(() => null)) as { error?: string } | null
+    throw new Error(parsed?.error || `停止失败（HTTP ${resp.status}）`)
+  }
+}
+
+async function postReset(sessionId: string): Promise<void> {
+  await fetch(`${EVE_ORIGIN}/eve/v1/session/${sessionId}/reset`, {
+    method: 'POST',
+    headers: eveAuthHeaders({ 'Content-Type': 'application/json' }),
+    body: '{}',
+    signal: AbortSignal.timeout(8_000)
+  }).catch(() => undefined)
+}
+
+function makeLive(record: ChatConversation): LiveSession {
+  return {
+    conversationId: record.id,
+    workspaceId: record.workspaceId,
+    eveSessionId: record.eveSessionId,
+    streamIndex: record.streamIndex,
+    streamAbort: null,
+    turnBusy: false,
+    turnWaiter: null,
+    lastAssistant: '',
+    answerByStep: new Map(),
+    reasoningByStep: new Map(),
+    activities: new Map(),
+    record
+  }
+}
+
+async function hydrate(id: string): Promise<LiveSession> {
+  if (!isConversationId(id)) throw new Error('对话 id 不合法')
+  const workspaceId = currentWorkspaceId()
+  const existing = live.get(id)
+  if (existing) {
+    if (existing.workspaceId !== workspaceId) throw new Error('对话不属于当前工作空间')
+    return existing
+  }
+  const record = await readConversation(workspaceId, id)
+  if (!record) throw new Error('对话不存在')
+  const session = makeLive(record)
+  live.set(id, session)
+  return session
+}
+
+function waitForTurnSettle(session: LiveSession): Promise<void> {
+  return new Promise((resolve, reject) => {
+    session.turnWaiter = { resolve, reject }
   })
 }
 
-export async function sendHomeMessage(text: string): Promise<void> {
+async function ensureEveSession(session: LiveSession, message: string): Promise<void> {
+  if (session.eveSessionId) {
+    openStream(session)
+    try {
+      await postSession(`/eve/v1/session/${session.eveSessionId}`, { message })
+      return
+    } catch (err) {
+      if (!isSessionGone(err)) throw err
+      closeStream(session)
+      session.eveSessionId = null
+      session.streamIndex = 0
+      session.record.eveSessionId = null
+    }
+  }
+  const created = await postSession('/eve/v1/session', { message })
+  session.eveSessionId = created.sessionId
+  session.record.eveSessionId = created.sessionId
+  session.streamIndex = 0
+  openStream(session)
+}
+
+export async function listChats(): Promise<ChatListItem[]> {
+  return listConversations(currentWorkspaceId())
+}
+
+export async function getChat(id: string): Promise<ChatConversation | null> {
+  if (!isConversationId(id)) return null
+  const workspaceId = currentWorkspaceId()
+  const existing = live.get(id)
+  if (existing && existing.workspaceId === workspaceId) return cloneRecord(existing.record)
+  const record = await readConversation(workspaceId, id)
+  return record ? cloneRecord(record) : null
+}
+
+export async function sendChatMessage(conversationId: string, text: string): Promise<void> {
   const trimmed = text.trim()
   if (!trimmed) throw new Error('消息不能为空')
+  if (!isConversationId(conversationId)) throw new Error('对话 id 不合法')
   if (status.state !== 'ready') {
     throw new Error(status.detail || 'AI 服务还没准备好')
   }
-  if (turnBusy) throw new Error('上一轮还在回复')
-  turnBusy = true
-  const settled = waitForTurnSettle()
+  const workspaceId = currentWorkspaceId()
+  let session = live.get(conversationId)
+  if (session && session.workspaceId !== workspaceId) {
+    throw new Error('对话不属于当前工作空间')
+  }
+  if (!session) {
+    const existing = await readConversation(workspaceId, conversationId)
+    session = makeLive(
+      existing ?? {
+        id: conversationId,
+        title: titleFromMessage(trimmed),
+        workspaceId,
+        eveSessionId: null,
+        streamIndex: 0,
+        messages: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    )
+    live.set(conversationId, session)
+  }
+  if (session.turnBusy) throw new Error('上一轮还在回复')
+  session.turnBusy = true
+  if (!session.record.messages.some((msg) => msg.role === 'user')) {
+    session.record.title = titleFromMessage(trimmed)
+  }
+  session.record.questions = undefined
+  session.record.messages.push(
+    { id: randomUUID(), role: 'user', text: trimmed },
+    { id: randomUUID(), role: 'assistant', text: '', pending: true }
+  )
+  const settled = waitForTurnSettle(session)
   try {
     try {
-      if (!sessionId) {
-        const created = await postSession('/eve/v1/session', trimmed)
-        sessionId = created.sessionId
-        openStream(sessionId)
-      } else {
-        try {
-          await postSession(`/eve/v1/session/${sessionId}`, trimmed)
-        } catch {
-          const created = await postSession('/eve/v1/session', trimmed)
-          sessionId = created.sessionId
-          openStream(sessionId)
-        }
-      }
+      emitSnapshot(session)
+      await persist(session)
+      await ensureEveSession(session, trimmed)
     } catch (err) {
-      failTurn(err instanceof Error ? err.message : String(err))
+      failTurn(session, err instanceof Error ? err.message : String(err))
     }
     await settled
   } finally {
-    turnBusy = false
+    session.turnBusy = false
   }
 }
 
-function waitForTurnSettle(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    turnWaiter = { resolve, reject }
-  })
+export async function cancelChat(conversationId: string): Promise<void> {
+  const session = live.get(conversationId)
+  if (!session?.eveSessionId) throw new Error('没有进行中的回复')
+  await postCancel(session.eveSessionId)
+}
+
+export async function respondChat(
+  conversationId: string,
+  responses: ChatInputResponse[]
+): Promise<void> {
+  if (responses.length === 0) throw new Error('没有作答')
+  if (status.state !== 'ready') {
+    throw new Error(status.detail || 'AI 服务还没准备好')
+  }
+  const session = await hydrate(conversationId)
+  if (session.turnBusy) throw new Error('上一轮还在回复')
+  const pending = session.record.questions
+  if (!pending?.length) throw new Error('当前没有待回答的问题')
+  session.turnBusy = true
+  session.record.questions = undefined
+  const last = lastAssistantMessage(session)
+  if (last) {
+    last.pending = true
+    last.error = undefined
+  }
+  emitSnapshot(session)
+  const settled = waitForTurnSettle(session)
+  try {
+    try {
+      if (!session.eveSessionId) throw new EveHttpError('会话已失效', 409, 'session_not_active')
+      openStream(session)
+      await postSession(`/eve/v1/session/${session.eveSessionId}`, { inputResponses: responses })
+    } catch (err) {
+      if (isSessionGone(err)) {
+        failTurn(session, '提问时会话已断开，请直接发消息继续。')
+      } else {
+        failTurn(session, err instanceof Error ? err.message : String(err))
+      }
+    }
+    await settled
+  } finally {
+    session.turnBusy = false
+  }
+}
+
+export async function deleteChat(conversationId: string): Promise<void> {
+  if (!isConversationId(conversationId)) throw new Error('对话 id 不合法')
+  const workspaceId = currentWorkspaceId()
+  const session = live.get(conversationId)
+  if (session) {
+    closeStream(session)
+    if (session.turnWaiter) {
+      session.turnWaiter.reject(new Error('对话已删除'))
+      session.turnWaiter = null
+    }
+    session.turnBusy = false
+    if (session.eveSessionId) {
+      const eveId = session.eveSessionId
+      void postCancel(eveId).catch(() => undefined)
+      void postReset(eveId)
+    }
+    live.delete(conversationId)
+  }
+  await deleteConversation(workspaceId, conversationId)
+  emitChat({ type: 'deleted', conversationId })
+  await emitIndex(workspaceId)
+}
+
+function dropEveBindings(): void {
+  for (const session of live.values()) {
+    closeStream(session)
+    session.eveSessionId = null
+    session.record.eveSessionId = null
+    if (session.turnWaiter) {
+      const last = lastAssistantMessage(session)
+      if (last?.pending) {
+        last.pending = false
+        last.error = last.error ?? 'AI 服务已停止'
+      }
+      session.record.questions = undefined
+      emitSnapshot(session)
+      void persist(session)
+      session.turnWaiter.reject(new Error('AI 服务已停止'))
+      session.turnWaiter = null
+    }
+    session.turnBusy = false
+  }
 }
 
 async function killChild(proc: ChildProcess): Promise<void> {
@@ -529,11 +888,8 @@ export async function startAgent(): Promise<void> {
     proc.on('exit', (code, signalName) => {
       if (child !== proc) return
       child = null
-      sessionId = null
-      streamAbort?.abort()
-      streamAbort = null
+      dropEveBindings()
       const detail = `eve 退出（code=${code ?? 'null'} signal=${signalName ?? 'none'}）`
-      if (turnWaiter) failTurn(detail)
       if (status.state === 'starting' || status.state === 'ready') {
         setStatus({ state: 'error', detail })
       }
@@ -559,15 +915,13 @@ export async function startAgent(): Promise<void> {
 }
 
 async function stopAgentQuiet(): Promise<void> {
-  if (turnWaiter) {
-    turnWaiter.reject(new Error('AI 服务已停止'))
-    turnWaiter = null
+  dropEveBindings()
+  const ws = getStatus().workspace ?? getStatus().namespace
+  if (ws) {
+    for (const [id, session] of live) {
+      if (session.workspaceId !== ws) live.delete(id)
+    }
   }
-  resetTurnTrace()
-  streamAbort?.abort()
-  streamAbort = null
-  sessionId = null
-  turnBusy = false
   const proc = child
   child = null
   if (proc) await killChild(proc)

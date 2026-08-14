@@ -1,17 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import sealosLogo from '../assets/sealos-logo-gold.svg'
 import AiProxyTab from './AiProxyTab'
 import AppDetailView, { type Crumb } from './AppDetailView'
 import ProjectDetailView from './ProjectDetailView'
 import TemplatesTab from './TemplatesTab'
 import WorkspacePanel from './WorkspacePanel'
+import HomeChat from './HomeChat'
 import type {
-  AgentStatus,
   AppStatus,
   AppWorkload,
   BucketInfo,
-  ChatActivity,
-  ChatEvent,
   DatabaseInfo,
   ProjectInfo,
   ResourceSnapshot,
@@ -150,22 +148,6 @@ function ChevronDownIcon({ size }: IconProps): React.JSX.Element {
   )
 }
 
-function PlusIcon({ size }: IconProps): React.JSX.Element {
-  return (
-    <svg {...iconAttrs(size)}>
-      <path d="M12 5v14M5 12h14" />
-    </svg>
-  )
-}
-
-function ArrowUpIcon({ size }: IconProps): React.JSX.Element {
-  return (
-    <svg {...iconAttrs(size)}>
-      <path d="M12 19V5m-7 7 7-7 7 7" />
-    </svg>
-  )
-}
-
 function XLogoIcon({ size }: IconProps): React.JSX.Element {
   return (
     <svg width={size ?? 16} height={size ?? 16} viewBox="0 0 24 24" fill="currentColor">
@@ -188,51 +170,6 @@ function PanelIcon({ size }: IconProps): React.JSX.Element {
     <svg {...iconAttrs(size)}>
       <rect x="3.5" y="5" width="17" height="14" rx="2" />
       <path d="M9.5 5v14" />
-    </svg>
-  )
-}
-
-function WorkflowIcon({ size }: IconProps): React.JSX.Element {
-  return (
-    <svg {...iconAttrs(size)}>
-      <circle cx="6" cy="6" r="2.2" />
-      <circle cx="18" cy="6" r="2.2" />
-      <circle cx="12" cy="18" r="2.2" />
-      <path d="M8.2 6h7.6M7 8l4 8M17 8l-4 8" />
-    </svg>
-  )
-}
-
-function GlobeIcon({ size }: IconProps): React.JSX.Element {
-  return (
-    <svg {...iconAttrs(size)}>
-      <circle cx="12" cy="12" r="8" />
-      <path d="M4 12h16M12 4c2.8 2.7 2.8 13.3 0 16-2.8-2.7-2.8-13.3 0-16Z" />
-    </svg>
-  )
-}
-
-function PulseIcon({ size }: IconProps): React.JSX.Element {
-  return (
-    <svg {...iconAttrs(size)}>
-      <path d="M3.5 12h4L10 6l4 12 2.5-6h4" />
-    </svg>
-  )
-}
-
-function PenIcon({ size }: IconProps): React.JSX.Element {
-  return (
-    <svg {...iconAttrs(size)}>
-      <path d="m5 19 1-4L16.5 4.5a2.12 2.12 0 0 1 3 3L9 18l-4 1Z" />
-    </svg>
-  )
-}
-
-function BucketIcon({ size }: IconProps): React.JSX.Element {
-  return (
-    <svg {...iconAttrs(size)}>
-      <ellipse cx="12" cy="6" rx="7" ry="2.2" />
-      <path d="M5 6l1.6 12.2A2 2 0 0 0 8.6 20h6.8a2 2 0 0 0 2-1.8L19 6" />
     </svg>
   )
 }
@@ -442,249 +379,6 @@ function BucketCard({ bucket }: { bucket: BucketInfo }): React.JSX.Element {
         )}
         {bucket.createdAt && <span>创建于 {new Date(bucket.createdAt).toLocaleString()}</span>}
       </div>
-    </div>
-  )
-}
-
-/* ── 首页 hero（Lovable dashboard 布局）───────────── */
-
-const PROMPT_SUGGESTIONS: Array<{ label: string; icon: React.JSX.Element }> = [
-  { label: 'n8n', icon: <WorkflowIcon size={16} /> },
-  { label: 'WordPress', icon: <GlobeIcon size={16} /> },
-  { label: 'Uptime Kuma', icon: <PulseIcon size={16} /> },
-  { label: 'Halo', icon: <PenIcon size={16} /> },
-  { label: 'MinIO', icon: <BucketIcon size={16} /> }
-]
-
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  text: string
-  reasoning?: string
-  activities?: ChatActivity[]
-  pending?: boolean
-  error?: string
-}
-
-function upsertActivity(list: ChatActivity[] | undefined, item: ChatActivity): ChatActivity[] {
-  const next = [...(list ?? [])]
-  const index = next.findIndex((row) => row.id === item.id)
-  if (index >= 0) next[index] = item
-  else next.push(item)
-  return next
-}
-
-function HomeHero(): React.JSX.Element {
-  const [text, setText] = useState('')
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [busy, setBusy] = useState(false)
-  const [agent, setAgent] = useState<AgentStatus>({ state: 'stopped' })
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const logRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    void window.helios.getAgentStatus().then(setAgent)
-    return window.helios.onAgentStatus(setAgent)
-  }, [])
-
-  useEffect(() => {
-    return window.helios.onChatEvent((event: ChatEvent) => {
-      if (event.type === 'delta') {
-        setMessages((prev) => {
-          const next = [...prev]
-          const last = next[next.length - 1]
-          if (last?.role !== 'assistant') return prev
-          next[next.length - 1] = { ...last, text: event.text, pending: true, error: undefined }
-          return next
-        })
-        return
-      }
-      if (event.type === 'reasoning') {
-        setMessages((prev) => {
-          const next = [...prev]
-          const last = next[next.length - 1]
-          if (last?.role !== 'assistant') return prev
-          next[next.length - 1] = { ...last, reasoning: event.text, pending: true }
-          return next
-        })
-        return
-      }
-      if (event.type === 'activity') {
-        setMessages((prev) => {
-          const next = [...prev]
-          const last = next[next.length - 1]
-          if (last?.role !== 'assistant') return prev
-          next[next.length - 1] = {
-            ...last,
-            activities: upsertActivity(last.activities, event.item),
-            pending: true
-          }
-          return next
-        })
-        return
-      }
-      if (event.type === 'done') {
-        setMessages((prev) => {
-          const next = [...prev]
-          const last = next[next.length - 1]
-          if (last?.role !== 'assistant') return prev
-          next[next.length - 1] = { ...last, pending: false }
-          return next
-        })
-        return
-      }
-      setMessages((prev) => {
-        const next = [...prev]
-        const last = next[next.length - 1]
-        if (last?.role !== 'assistant') return prev
-        next[next.length - 1] = { ...last, pending: false, error: event.message }
-        return next
-      })
-    })
-  }, [])
-
-  useEffect(() => {
-    logRef.current?.scrollTo({ top: logRef.current.scrollHeight })
-  }, [messages])
-
-  const autosize = useCallback(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
-  }, [])
-
-  const submit = useCallback(() => {
-    const value = text.trim()
-    if (!value || busy) return
-    setText('')
-    setBusy(true)
-    setMessages((prev) => [
-      ...prev,
-      { role: 'user', text: value },
-      { role: 'assistant', text: '', pending: true }
-    ])
-    requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (!el) return
-      el.style.height = 'auto'
-    })
-    void window.helios.sendHomeMessage(value).then(
-      () => setBusy(false),
-      (err: unknown) => {
-        setBusy(false)
-        const message = err instanceof Error ? err.message : String(err)
-        setMessages((prev) => {
-          const next = [...prev]
-          const last = next[next.length - 1]
-          if (last?.role !== 'assistant' || last.error) return prev
-          next[next.length - 1] = { ...last, pending: false, error: message }
-          return next
-        })
-      }
-    )
-  }, [text, busy])
-
-  const chatting = messages.length > 0
-  const canSend = Boolean(text.trim()) && !busy && agent.state === 'ready'
-
-  return (
-    <div className={`hero${chatting ? ' has-chat' : ''}`}>
-      <div className="hero-spacer-top" />
-      <div className="hero-main">
-        {!chatting && <h1>今天想开发点什么？</h1>}
-        {chatting && (
-          <div className="chat-log" ref={logRef}>
-            {messages.map((msg, index) => (
-              <div
-                key={`${msg.role}-${index}`}
-                className={`chat-msg ${msg.role}${msg.error ? ' error' : ''}`}
-              >
-                {msg.role === 'assistant' && msg.reasoning ? (
-                  <details className="chat-reasoning" open={msg.pending}>
-                    <summary>思考过程</summary>
-                    <div>{msg.reasoning}</div>
-                  </details>
-                ) : null}
-                {msg.role === 'assistant' && msg.activities && msg.activities.length > 0 ? (
-                  <ul className="chat-activity">
-                    {msg.activities.map((item) => (
-                      <li key={item.id} className={item.status}>
-                        <span className="chat-activity-mark" aria-hidden />
-                        <span className="chat-activity-label">{item.label}</span>
-                        {item.detail ? <span className="chat-activity-detail">{item.detail}</span> : null}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                {msg.error
-                  ? msg.error
-                  : msg.text ||
-                    (msg.pending
-                      ? msg.activities?.length
-                        ? ''
-                        : '正在思考…'
-                      : '')}
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="prompt-card">
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            value={text}
-            placeholder={chatting ? '继续说…' : '把项目文件夹拖进来，或粘贴 Git 仓库地址…'}
-            disabled={busy}
-            onChange={(e) => {
-              setText(e.target.value)
-              autosize()
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                submit()
-              }
-            }}
-          />
-          <div className="prompt-actions">
-            <button className="icon-btn" title="添加项目文件夹">
-              <PlusIcon size={16} />
-            </button>
-            <button
-              className={`send-btn${canSend ? ' ready' : ''}`}
-              title="发送"
-              onClick={submit}
-              disabled={!canSend}
-            >
-              <ArrowUpIcon size={16} />
-            </button>
-          </div>
-        </div>
-        {agent.state !== 'ready' && (
-          <div className={`prompt-notice${agent.state === 'error' ? ' error' : ''}`}>
-            {agent.state === 'starting' || agent.state === 'stopped'
-              ? (agent.detail ?? '正在启动 AI 服务…')
-              : (agent.detail ?? 'AI 服务不可用')}
-          </div>
-        )}
-        {!chatting && (
-          <div className="chips">
-            {PROMPT_SUGGESTIONS.map((s) => (
-              <button
-                key={s.label}
-                onClick={() => {
-                  setText(`部署一个 ${s.label}`)
-                  textareaRef.current?.focus()
-                }}
-              >
-                {s.icon}
-                {s.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-      <div className="hero-spacer-bottom" />
     </div>
   )
 }
@@ -1109,99 +803,107 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
 
       <main className="content">
         <div className="drag-strip" />
-        {tab === 'home' ? (
-          <>
-            <div className="hero-bg" aria-hidden="true" />
-            <HomeHero />
-            <button
-              className="announce announce-corner"
-              title="在 X 上关注我"
-              onClick={() => openUrl('https://x.com/norberia_cz')}
-            >
-              <span className="announce-badge">Hi</span>
-              <span>Follow me on X</span>
-              <XLogoIcon size={15} />
-            </button>
-          </>
-        ) : detailStack.length > 0 ? (
-          <div className="page">
-            <div className="page-body page-body-detail">
-              {(() => {
-                const top = detailStack[detailStack.length - 1]
-                const crumbs: Crumb[] = [
-                  {
-                    label: TAB_TITLE[tab as Exclude<Tab, 'home'>],
-                    onClick: () => setDetailStack([])
-                  },
-                  ...detailStack.map((entry, i) => ({
-                    label: entry.name,
-                    onClick:
-                      i < detailStack.length - 1
-                        ? () => setDetailStack(detailStack.slice(0, i + 1))
-                        : undefined
-                  }))
-                ]
-                return top.type === 'project' ? (
-                  <ProjectDetailView
-                    key={top.name}
-                    name={top.name}
-                    crumbs={crumbs}
-                    onOpenApp={pushApp}
-                  />
+        <div className={tab === 'home' ? 'home-shell' : 'home-shell is-hidden'}>
+          <div className="hero-bg" aria-hidden="true" />
+          <HomeChat
+            key={status.workspace ?? status.namespace ?? ''}
+            workspaceId={status.workspace ?? status.namespace ?? ''}
+            insetLeft={collapsed ? 52 : 12}
+          />
+          <button
+            className="announce announce-corner"
+            title="在 X 上关注我"
+            onClick={() => openUrl('https://x.com/norberia_cz')}
+          >
+            <span className="announce-badge">Hi</span>
+            <span>Follow me on X</span>
+            <XLogoIcon size={15} />
+          </button>
+        </div>
+        {tab !== 'home' &&
+          (detailStack.length > 0 ? (
+            <div className="page">
+              <div className="page-body page-body-detail">
+                {(() => {
+                  const top = detailStack[detailStack.length - 1]
+                  const crumbs: Crumb[] = [
+                    {
+                      label: TAB_TITLE[tab as Exclude<Tab, 'home'>],
+                      onClick: () => setDetailStack([])
+                    },
+                    ...detailStack.map((entry, i) => ({
+                      label: entry.name,
+                      onClick:
+                        i < detailStack.length - 1
+                          ? () => setDetailStack(detailStack.slice(0, i + 1))
+                          : undefined
+                    }))
+                  ]
+                  return top.type === 'project' ? (
+                    <ProjectDetailView
+                      key={top.name}
+                      name={top.name}
+                      crumbs={crumbs}
+                      onOpenApp={pushApp}
+                    />
+                  ) : (
+                    <AppDetailView
+                      key={`${top.kind}-${top.name}`}
+                      name={top.name}
+                      kind={top.kind}
+                      crumbs={crumbs}
+                      onOpenProject={openProject}
+                    />
+                  )
+                })()}
+              </div>
+            </div>
+          ) : (
+            <div className="page">
+              <header className="page-head">
+                <h1>{TAB_TITLE[tab]}</h1>
+                {tab !== 'templates' && tab !== 'aiproxy' && snapshot && (
+                  <span className="hint">
+                    更新于 {new Date(snapshot.fetchedAt).toLocaleTimeString()}
+                  </span>
+                )}
+              </header>
+              <div className="page-body">
+                {tab === 'templates' ? (
+                  <TemplatesTab />
+                ) : tab === 'aiproxy' ? (
+                  <AiProxyTab />
                 ) : (
-                  <AppDetailView
-                    key={`${top.kind}-${top.name}`}
-                    name={top.name}
-                    kind={top.kind}
-                    crumbs={crumbs}
-                    onOpenProject={openProject}
-                  />
-                )
-              })()}
-            </div>
-          </div>
-        ) : (
-          <div className="page">
-            <header className="page-head">
-              <h1>{TAB_TITLE[tab]}</h1>
-              {tab !== 'templates' && tab !== 'aiproxy' && snapshot && (
-                <span className="hint">
-                  更新于 {new Date(snapshot.fetchedAt).toLocaleTimeString()}
-                </span>
-              )}
-            </header>
-            <div className="page-body">
-              {tab === 'templates' ? (
-                <TemplatesTab />
-              ) : tab === 'aiproxy' ? (
-                <AiProxyTab />
-              ) : (
-                <>
-                  {error && <div className="error">{error}</div>}
-                  {snapshot?.warnings.map((w) => (
-                    <div key={w} className="warning">
-                      {w}
-                    </div>
-                  ))}
+                  <>
+                    {error && <div className="error">{error}</div>}
+                    {snapshot?.warnings.map((w) => (
+                      <div key={w} className="warning">
+                        {w}
+                      </div>
+                    ))}
 
-                  {!snapshot && !error && <div className="placeholder">正在读取工作空间…</div>}
+                    {!snapshot && !error && <div className="placeholder">正在读取工作空间…</div>}
 
-                  {snapshot && tab === 'projects' && (
-                    <ProjectsTab snapshot={snapshot} onOpenProject={openProject} />
-                  )}
-                  {snapshot && tab === 'apps' && (
-                    <AppsTab snapshot={snapshot} onOpenApp={pushApp} onOpenProject={openProject} />
-                  )}
-                  {snapshot && tab === 'databases' && <DatabasesTab snapshot={snapshot} />}
-                  {snapshot && tab === 'storage' && <StorageTab snapshot={snapshot} />}
-                  {tab === 'account' && (
-                    <AccountTab status={status} snapshot={snapshot} onLogout={onLogout} />
-                  )}
-                </>
-              )}
+                    {snapshot && tab === 'projects' && (
+                      <ProjectsTab snapshot={snapshot} onOpenProject={openProject} />
+                    )}
+                    {snapshot && tab === 'apps' && (
+                      <AppsTab
+                        snapshot={snapshot}
+                        onOpenApp={pushApp}
+                        onOpenProject={openProject}
+                      />
+                    )}
+                    {snapshot && tab === 'databases' && <DatabasesTab snapshot={snapshot} />}
+                    {snapshot && tab === 'storage' && <StorageTab snapshot={snapshot} />}
+                    {tab === 'account' && (
+                      <AccountTab status={status} snapshot={snapshot} onLogout={onLogout} />
+                    )}
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          ))}
       </main>
     </div>
   )

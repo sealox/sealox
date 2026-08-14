@@ -2,8 +2,19 @@ import { app, shell, clipboard, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import type { LoginEvent } from '../shared/types'
-import { getAgentStatus, restartAgent, sendHomeMessage, startAgent, stopAgent } from './agent/runtime'
+import type { ChatInputResponse, LoginEvent } from '../shared/types'
+import {
+  getAgentStatus,
+  restartAgent,
+  startAgent,
+  stopAgent,
+  listChats,
+  getChat,
+  sendChatMessage,
+  cancelChat,
+  respondChat,
+  deleteChat
+} from './agent/runtime'
 import {
   cancelLogin,
   getStatus,
@@ -128,7 +139,22 @@ function registerIpc(): void {
     clipboard.writeText(text)
   })
   ipcMain.handle('helios:agent-status', () => getAgentStatus())
-  ipcMain.handle('helios:chat-send', (_event, text: string) => sendHomeMessage(text))
+  ipcMain.handle('helios:chat-list', () => listChats())
+  ipcMain.handle('helios:chat-get', (_event, id: string) => getChat(id))
+  ipcMain.handle('helios:chat-send', (_event, conversationId: string, text: string) =>
+    sendChatMessage(conversationId, text)
+  )
+  ipcMain.handle('helios:chat-cancel', (_event, conversationId: string) =>
+    cancelChat(conversationId)
+  )
+  ipcMain.handle(
+    'helios:chat-respond',
+    (_event, conversationId: string, responses: ChatInputResponse[]) =>
+      respondChat(conversationId, responses)
+  )
+  ipcMain.handle('helios:chat-delete', (_event, conversationId: string) =>
+    deleteChat(conversationId)
+  )
 }
 
 app.whenReady().then(() => {
