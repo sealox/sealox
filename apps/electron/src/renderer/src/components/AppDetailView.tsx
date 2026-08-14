@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AppDetail, AppMonitor, PodDetail } from '../../../shared/types'
 import {
   BackIcon,
@@ -26,6 +26,8 @@ interface Props {
   kind: 'Deployment' | 'StatefulSet'
   crumbs: Crumb[]
   onOpenProject?: (project: string) => void
+  onRequestDelete: (project?: string) => void
+  onOperated: () => void
 }
 
 interface LogState {
@@ -161,13 +163,23 @@ function phaseToStatus(phase: string): 'Running' | 'Progressing' | 'Failed' | 'S
   return 'Progressing'
 }
 
-function AppDetailView({ name, kind, crumbs, onOpenProject }: Props): React.JSX.Element {
+function AppDetailView({
+  name,
+  kind,
+  crumbs,
+  onOpenProject,
+  onRequestDelete,
+  onOperated
+}: Props): React.JSX.Element {
   const [detail, setDetail] = useState<AppDetail | null>(null)
   const [error, setError] = useState('')
   const [monitor, setMonitor] = useState<AppMonitor | null>(null)
   const [expandedPod, setExpandedPod] = useState<string | null>(null)
   const [logs, setLogs] = useState<Record<string, LogState>>({})
   const [refreshing, setRefreshing] = useState(false)
+  const [acting, setActing] = useState<'restart' | 'pause' | 'start' | null>(null)
+  const [actionError, setActionError] = useState('')
+  const actingRef = useRef(false)
 
   const refresh = useCallback(() => {
     setRefreshing(true)
@@ -180,6 +192,23 @@ function AppDetailView({ name, kind, crumbs, onOpenProject }: Props): React.JSX.
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setRefreshing(false))
   }, [name, kind])
+
+  const runOperate = (op: 'restart' | 'pause' | 'start', fn: () => Promise<void>): void => {
+    if (actingRef.current) return
+    actingRef.current = true
+    setActing(op)
+    setActionError('')
+    fn()
+      .then(() => {
+        onOperated()
+        refresh()
+      })
+      .catch((err: unknown) => setActionError(err instanceof Error ? err.message : String(err)))
+      .finally(() => {
+        actingRef.current = false
+        setActing(null)
+      })
+  }
 
   useEffect(() => {
     const initial = setTimeout(refresh, 0)
@@ -313,6 +342,41 @@ function AppDetailView({ name, kind, crumbs, onOpenProject }: Props): React.JSX.
               打开站点
             </button>
           )}
+          {detail.launchpad && (
+            <>
+              <button
+                className="daction"
+                disabled={acting !== null}
+                onClick={() => runOperate('restart', () => window.helios.restartApp(name))}
+              >
+                {acting === 'restart' ? '重启中…' : '重启'}
+              </button>
+              {detail.paused || detail.status === 'Stopped' ? (
+                <button
+                  className="daction daction-secondary"
+                  disabled={acting !== null}
+                  onClick={() => runOperate('start', () => window.helios.startApp(name))}
+                >
+                  {acting === 'start' ? '启动中…' : '启动'}
+                </button>
+              ) : (
+                <button
+                  className="daction daction-secondary"
+                  disabled={acting !== null}
+                  onClick={() => runOperate('pause', () => window.helios.pauseApp(name))}
+                >
+                  {acting === 'pause' ? '暂停中…' : '暂停'}
+                </button>
+              )}
+              <button
+                className="daction daction-danger"
+                disabled={acting !== null}
+                onClick={() => onRequestDelete(detail.project)}
+              >
+                删除
+              </button>
+            </>
+          )}
           <button
             className={`icon-btn${refreshing ? ' loading' : ''}`}
             title="刷新"
@@ -325,6 +389,7 @@ function AppDetailView({ name, kind, crumbs, onOpenProject }: Props): React.JSX.
       </header>
 
       {error && <div className="error">{error}</div>}
+      {actionError && <div className="error">{actionError}</div>}
 
       <StatStrip
         items={[

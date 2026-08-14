@@ -26,6 +26,16 @@ import {
 } from './sealos/auth'
 import { createAiKey, deleteAiKey, fetchAiProxyOverview, setAiKeyEnabled } from './sealos/aiproxy'
 import { fetchAppDetail, fetchAppMonitor, fetchPodLogs, fetchProjectDetail } from './sealos/details'
+import {
+  deleteApp,
+  deleteProject,
+  pauseApp,
+  pauseProject,
+  restartApp,
+  restartProject,
+  startApp,
+  startProject
+} from './sealos/operate'
 import { fetchResources } from './sealos/resources'
 import { deployTemplate, fetchTemplateDetail, fetchTemplates } from './sealos/templates'
 import {
@@ -123,6 +133,14 @@ function registerIpc(): void {
     (_event, templateName: string, args?: Record<string, string>) =>
       deployTemplate(templateName, args)
   )
+  ipcMain.handle('sealos:app-delete', (_event, name: string) => deleteApp(name))
+  ipcMain.handle('sealos:app-restart', (_event, name: string) => restartApp(name))
+  ipcMain.handle('sealos:app-pause', (_event, name: string) => pauseApp(name))
+  ipcMain.handle('sealos:app-start', (_event, name: string) => startApp(name))
+  ipcMain.handle('sealos:project-delete', (_event, name: string) => deleteProject(name))
+  ipcMain.handle('sealos:project-restart', (_event, name: string) => restartProject(name))
+  ipcMain.handle('sealos:project-pause', (_event, name: string) => pauseProject(name))
+  ipcMain.handle('sealos:project-start', (_event, name: string) => startProject(name))
   ipcMain.handle('sealos:workspaces', () => listWorkspaces())
   ipcMain.handle('sealos:workspace-switch', async (_event, uid: string) => {
     const status = await switchWorkspace(uid)

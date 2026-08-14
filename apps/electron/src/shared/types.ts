@@ -540,6 +540,14 @@ export interface HeliosApi {
   getTemplates(): Promise<TemplateCatalog>
   getTemplateDetail(templateName: string): Promise<TemplateDetail>
   deployTemplate(templateName: string, args?: Record<string, string>): Promise<TemplateDeployResult>
+  deleteApp(name: string): Promise<void>
+  restartApp(name: string): Promise<void>
+  pauseApp(name: string): Promise<void>
+  startApp(name: string): Promise<void>
+  deleteProject(name: string): Promise<void>
+  restartProject(name: string): Promise<void>
+  pauseProject(name: string): Promise<void>
+  startProject(name: string): Promise<void>
   listWorkspaces(): Promise<WorkspaceInfo[]>
   switchWorkspace(uid: string): Promise<SealosStatus>
   getWorkspaceDetails(uid: string): Promise<WorkspaceDetails>

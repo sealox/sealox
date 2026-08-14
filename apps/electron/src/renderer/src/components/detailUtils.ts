@@ -2,7 +2,7 @@ import type { AppStatus } from '../../../shared/types'
 
 export const STATUS_LABEL: Record<AppStatus, string> = {
   Running: '运行中',
-  Progressing: '启动中',
+  Progressing: '处理中',
   Stopped: '已暂停',
   Failed: '异常'
 }
@@ -15,6 +15,7 @@ export function dbPhaseToStatus(phase: string): AppStatus {
   if (phase === 'Running') return 'Running'
   if (phase === 'Failed' || phase === 'Abnormal') return 'Failed'
   if (phase === 'Stopped') return 'Stopped'
+  // Stopping / Starting / Updating / Creating … KubeBlocks 过渡态
   return 'Progressing'
 }
 

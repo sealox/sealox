@@ -55,6 +55,15 @@ const helios: HeliosApi = {
     args?: Record<string, string>
   ): Promise<TemplateDeployResult> =>
     ipcRenderer.invoke('sealos:template-deploy', templateName, args),
+  deleteApp: (name: string): Promise<void> => ipcRenderer.invoke('sealos:app-delete', name),
+  restartApp: (name: string): Promise<void> => ipcRenderer.invoke('sealos:app-restart', name),
+  pauseApp: (name: string): Promise<void> => ipcRenderer.invoke('sealos:app-pause', name),
+  startApp: (name: string): Promise<void> => ipcRenderer.invoke('sealos:app-start', name),
+  deleteProject: (name: string): Promise<void> => ipcRenderer.invoke('sealos:project-delete', name),
+  restartProject: (name: string): Promise<void> =>
+    ipcRenderer.invoke('sealos:project-restart', name),
+  pauseProject: (name: string): Promise<void> => ipcRenderer.invoke('sealos:project-pause', name),
+  startProject: (name: string): Promise<void> => ipcRenderer.invoke('sealos:project-start', name),
   listWorkspaces: (): Promise<WorkspaceInfo[]> => ipcRenderer.invoke('sealos:workspaces'),
   switchWorkspace: (uid: string): Promise<SealosStatus> =>
     ipcRenderer.invoke('sealos:workspace-switch', uid),

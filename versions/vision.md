@@ -2,9 +2,11 @@
 
 桌面 app：把项目丢进来，agent 负责部署到 Sealos，部署产生的全部资源清晰可见。
 
-Helios 不是又一个 Sealos 控制台，也不是通用 ChatGPT。它是 **Sealos 的 agent 操作台**：对话负责改变世界，侧栏负责诚实展示那个世界。内部 MVP，用来证明 agent-first 的部署体验优于 Sealos 控制台。
+Helios 不是又一个 Sealos 控制台，也不是为了「做 agent」而做的 agent 应用。它是让 **Sealos 更好用** 的桌面操作台。内部 MVP。
 
-版本记录：[0.1 baseline](./0.1-baseline.md)、[0.2 agent chat](./0.2-agent-chat.md)、[0.3 templates](./0.3-templates.md)。
+用户的需求经常是模糊的——那种交给 agent，用自然语言理解 intent。确定性强的动作（部署这个模板、删除这个项目、重启这个应用）走界面按钮：点下去就是那件事，不经过对话。对话的确定性比按钮差，不该承担这类操作。侧栏和详情负责诚实展示那个世界。
+
+版本记录：[0.1 baseline](./0.1-baseline.md)、[0.2 agent chat](./0.2-agent-chat.md)、[0.3 templates](./0.3-templates.md)、[0.4 operate](./0.4-operate.md)。
 
 ## 为什么存在
 
@@ -12,15 +14,17 @@ use-sealos skill（[sealos-skills-next](https://github.com/norberia/sealos-skill
 
 ## 产品边界
 
-做：登录 Sealos → 对话部署 / 排障 / 管数据库与存储 → 同一屏看见并点进真实资源。
+做：登录 Sealos → 对话处理模糊意图（部署 / 排障 / 管数据库与存储）→ 按钮处理确定动作（模板部署、删除、重启、暂停/启动）→ 同一屏看见并点进真实资源。
 
 不做：Web 版、移动端、自建云端后端和自建数据库（本地 eve 是桌面进程，不是云服务）、多项目管理面板、独立成本中心、区域切换。团队协作产品不做；工作空间切换已有。
 
-成功标准：同一个项目分别用 Sealos 控制台和 Helios 部署，对比完成时间与操作步数。Helios 必须一个输入、全程无表单，且以公网 URL 实际可访问作为部署成功的唯一标准。
+成功标准：同一个项目分别用 Sealos 控制台和 Helios 部署，对比完成时间与操作步数。模糊需求一个输入即可；不把控制台那种配置表单搬进来。部署成功以公网 URL 实际可访问为唯一标准。
 
 ## 两层结构
 
-1. **做事**：Electron 主进程 → 本地 eve（bash + use-sealos 脚本 / kubectl）→ Sealos。「开始」是唯一动作入口。
+1. **做事**分两条，都经 Electron 主进程，渲染进程不直连 Sealos / eve：
+   - **模糊意图**：「开始」→ 本地 eve（bash + use-sealos 脚本 / kubectl）→ Sealos。
+   - **确定动作**：主进程直调 Sealos 已有 API（模板部署、删除、重启、暂停/启动）。
 2. **看见**：Electron → Sealos API 直连（namespace-scoped k8s API + applaunchpad 监控 API）。资源侧栏是部署结果的仪表盘；口径与 Sealos 控制台同一套标签和接口。本地不存业务状态；15 秒自动刷新 + 手动刷新；数据库/环境变量只展示 secret 引用名，不显示明文。
 
 ## 架构（已定）

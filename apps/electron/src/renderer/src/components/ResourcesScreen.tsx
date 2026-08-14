@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import sealosLogo from '../assets/sealos-logo-gold.svg'
 import AiProxyTab from './AiProxyTab'
 import AppDetailView, { type Crumb } from './AppDetailView'
+import ConfirmDialog from './ConfirmDialog'
 import ProjectDetailView from './ProjectDetailView'
 import TemplatesTab from './TemplatesTab'
 import WorkspacePanel from './WorkspacePanel'
@@ -34,7 +35,7 @@ const REFRESH_INTERVAL_MS = 15_000
 
 const STATUS_LABEL: Record<AppStatus, string> = {
   Running: '运行中',
-  Progressing: '启动中',
+  Progressing: '处理中',
   Stopped: '已暂停',
   Failed: '异常'
 }
@@ -212,12 +213,52 @@ interface ProjectView {
   urls: string[]
 }
 
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+function pruneDetailStack(stack: DetailEntry[], snap: ResourceSnapshot): DetailEntry[] {
+  const kept: DetailEntry[] = []
+  for (const entry of stack) {
+    if (entry.type === 'project') {
+      if (!snap.projects.some((p) => p.name === entry.name)) break
+    } else if (!snap.apps.some((a) => a.name === entry.name && a.kind === entry.kind)) {
+      break
+    }
+    kept.push(entry)
+  }
+  return kept
+}
+
+function projectTitleOf(snap: ResourceSnapshot | null, name: string): string {
+  const p = snap?.projects.find((x) => x.name === name)
+  return p?.displayName || name
+}
+
+type PendingDelete =
+  | {
+      type: 'project'
+      name: string
+      displayName?: string
+      apps: number
+      databases: number
+      buckets: number
+    }
+  | {
+      type: 'app'
+      name: string
+      project?: string
+      projectTitle?: string
+    }
+
 function ProjectCard({
   view,
-  onOpen
+  onOpen,
+  onDelete
 }: {
   view: ProjectView
   onOpen: () => void
+  onDelete: () => void
 }): React.JSX.Element {
   const { project, status, workloads, databases, buckets, urls } = view
   const failingPods = workloads.flatMap((w) => w.pods.filter((p) => p.reason))
@@ -252,7 +293,21 @@ function ProjectCard({
         )}
         <h3>{project.displayName ?? project.name}</h3>
         {project.template && <span className="chip chip-project">{project.template}</span>}
-        <span className="card-open-hint">›</span>
+        <span className="card-head-actions">
+          <button
+            type="button"
+            className="card-delete"
+            title="删除项目"
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete()
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            删除
+          </button>
+          <span className="card-open-hint">›</span>
+        </span>
       </div>
       <div className="card-meta">
         <span>{parts.join(' · ')}</span>
@@ -274,11 +329,13 @@ function ProjectCard({
 function WorkloadCard({
   app,
   onOpen,
-  onOpenProject
+  onOpenProject,
+  onDelete
 }: {
   app: AppWorkload
   onOpen: () => void
   onOpenProject: (project: string) => void
+  onDelete?: () => void
 }): React.JSX.Element {
   const failingPods = app.pods.filter((p) => p.reason)
   return (
@@ -307,7 +364,23 @@ function WorkloadCard({
             {app.project}
           </button>
         )}
-        <span className="card-open-hint">›</span>
+        <span className="card-head-actions">
+          {onDelete && (
+            <button
+              type="button"
+              className="card-delete"
+              title="删除应用"
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete()
+              }}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              删除
+            </button>
+          )}
+          <span className="card-open-hint">›</span>
+        </span>
       </div>
       <div className="card-meta">
         <span>
@@ -379,10 +452,12 @@ function BucketCard({ bucket }: { bucket: BucketInfo }): React.JSX.Element {
 
 function ProjectsTab({
   snapshot,
-  onOpenProject
+  onOpenProject,
+  onDeleteProject
 }: {
   snapshot: ResourceSnapshot
   onOpenProject: (name: string) => void
+  onDeleteProject: (view: ProjectView) => void
 }): React.JSX.Element {
   const views = useMemo<ProjectView[]>(
     () =>
@@ -421,6 +496,7 @@ function ProjectsTab({
           key={view.project.name}
           view={view}
           onOpen={() => onOpenProject(view.project.name)}
+          onDelete={() => onDeleteProject(view)}
         />
       ))}
     </div>
@@ -430,11 +506,13 @@ function ProjectsTab({
 function AppsTab({
   snapshot,
   onOpenApp,
-  onOpenProject
+  onOpenProject,
+  onDeleteApp
 }: {
   snapshot: ResourceSnapshot
   onOpenApp: (name: string, kind: 'Deployment' | 'StatefulSet') => void
   onOpenProject: (name: string) => void
+  onDeleteApp: (app: AppWorkload) => void
 }): React.JSX.Element {
   // 与 App Launchpad 相同的口径：带 app-deploy-manager 标签的工作负载
   const launchpadApps = useMemo(() => snapshot.apps.filter((a) => a.launchpad), [snapshot])
@@ -458,6 +536,7 @@ function AppsTab({
             app={app}
             onOpen={() => onOpenApp(app.name, app.kind)}
             onOpenProject={onOpenProject}
+            onDelete={() => onDeleteApp(app)}
           />
         ))}
       </div>
@@ -598,6 +677,9 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [wsOpen, setWsOpen] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   /** 切换主导航时离开详情 */
   const navigateTab = useCallback((next: Tab) => {
@@ -625,10 +707,80 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
         setError('')
       })
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : String(err))
+        setError(errMsg(err))
       })
       .finally(() => setLoading(false))
   }, [])
+
+  const requestDeleteProject = useCallback((view: ProjectView) => {
+    setDeleteError('')
+    setPendingDelete({
+      type: 'project',
+      name: view.project.name,
+      displayName: view.project.displayName,
+      apps: view.workloads.length,
+      databases: view.databases.length,
+      buckets: view.buckets.length
+    })
+  }, [])
+
+  const requestDeleteApp = useCallback(
+    (app: AppWorkload) => {
+      setDeleteError('')
+      setPendingDelete({
+        type: 'app',
+        name: app.name,
+        project: app.project,
+        projectTitle: app.project ? projectTitleOf(snapshot, app.project) : undefined
+      })
+    },
+    [snapshot]
+  )
+
+  const closeDeleteDialog = useCallback(() => {
+    if (deleteBusy) return
+    setPendingDelete(null)
+    setDeleteError('')
+  }, [deleteBusy])
+
+  const confirmDelete = useCallback(() => {
+    if (!pendingDelete || deleteBusy) return
+    setDeleteBusy(true)
+    setDeleteError('')
+    const pending = pendingDelete
+    const run =
+      pending.type === 'project'
+        ? window.helios.deleteProject(pending.name)
+        : window.helios.deleteApp(pending.name)
+    void run
+      .then(async () => {
+        setPendingDelete(null)
+        let snap: ResourceSnapshot | null = null
+        try {
+          snap = await window.helios.getResources()
+          setSnapshot(snap)
+          setError('')
+        } catch (err) {
+          setError(errMsg(err))
+        }
+        setDetailStack((stack) => {
+          let next = stack
+          if (pending.type === 'project') {
+            next = []
+          } else {
+            const top = stack[stack.length - 1]
+            if (top?.type === 'app' && top.name === pending.name) {
+              next = stack.slice(0, -1)
+            }
+          }
+          return snap ? pruneDetailStack(next, snap) : next
+        })
+      })
+      .catch((err: unknown) => {
+        setDeleteError(errMsg(err))
+      })
+      .finally(() => setDeleteBusy(false))
+  }, [pendingDelete, deleteBusy])
 
   useEffect(() => {
     const initial = setTimeout(refresh, 0)
@@ -828,6 +980,11 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
                       name={top.name}
                       crumbs={crumbs}
                       onOpenApp={pushApp}
+                      onOperated={refresh}
+                      onRequestDelete={(info) => {
+                        setDeleteError('')
+                        setPendingDelete({ type: 'project', name: top.name, ...info })
+                      }}
                     />
                   ) : (
                     <AppDetailView
@@ -836,6 +993,16 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
                       kind={top.kind}
                       crumbs={crumbs}
                       onOpenProject={openProject}
+                      onOperated={refresh}
+                      onRequestDelete={(project) => {
+                        setDeleteError('')
+                        setPendingDelete({
+                          type: 'app',
+                          name: top.name,
+                          project,
+                          projectTitle: project ? projectTitleOf(snapshot, project) : undefined
+                        })
+                      }}
                     />
                   )
                 })()}
@@ -874,13 +1041,18 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
                     {!snapshot && !error && <div className="placeholder">正在读取工作空间…</div>}
 
                     {snapshot && tab === 'projects' && (
-                      <ProjectsTab snapshot={snapshot} onOpenProject={openProject} />
+                      <ProjectsTab
+                        snapshot={snapshot}
+                        onOpenProject={openProject}
+                        onDeleteProject={requestDeleteProject}
+                      />
                     )}
                     {snapshot && tab === 'apps' && (
                       <AppsTab
                         snapshot={snapshot}
                         onOpenApp={pushApp}
                         onOpenProject={openProject}
+                        onDeleteApp={requestDeleteApp}
                       />
                     )}
                     {snapshot && tab === 'databases' && <DatabasesTab snapshot={snapshot} />}
@@ -894,6 +1066,60 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
             </div>
           ))}
       </main>
+      {pendingDelete?.type === 'project' && (
+        <ConfirmDialog
+          title="删除项目？"
+          confirmLabel="删除项目"
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={closeDeleteDialog}
+          onConfirm={confirmDelete}
+        >
+          <p>确定删除「{pendingDelete.displayName || pendingDelete.name}」？</p>
+          <p>
+            实例名 <span className="mono">{pendingDelete.name}</span>
+          </p>
+          <p>
+            将带走 {pendingDelete.apps} 个应用、{pendingDelete.databases} 个数据库、
+            {pendingDelete.buckets} 个存储桶。不可恢复。
+          </p>
+        </ConfirmDialog>
+      )}
+      {pendingDelete?.type === 'app' && !pendingDelete.project && (
+        <ConfirmDialog
+          title="删除应用？"
+          confirmLabel="删除应用"
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={closeDeleteDialog}
+          onConfirm={confirmDelete}
+        >
+          <p>确定删除「{pendingDelete.name}」？不可恢复。</p>
+        </ConfirmDialog>
+      )}
+      {pendingDelete?.type === 'app' && pendingDelete.project && (
+        <ConfirmDialog
+          title="删除应用？"
+          confirmLabel="只删除这个应用"
+          extraLabel="去项目"
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={closeDeleteDialog}
+          onExtra={() => {
+            if (deleteBusy || !pendingDelete.project) return
+            const project = pendingDelete.project
+            setPendingDelete(null)
+            setDeleteError('')
+            openProject(project)
+          }}
+          onConfirm={confirmDelete}
+        >
+          <p>
+            「{pendingDelete.name}」是项目「{pendingDelete.projectTitle || pendingDelete.project}
+            」的一部分。只删这个应用，项目里的数据库和其它应用还在。要拆整个栈，走项目删除。
+          </p>
+        </ConfirmDialog>
+      )}
     </div>
   )
 }

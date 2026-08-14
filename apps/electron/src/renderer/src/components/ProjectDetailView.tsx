@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AppStatus, OtherResource, ProjectDetail } from '../../../shared/types'
 import { DetailCrumbs, type Crumb } from './AppDetailView'
 import {
@@ -33,6 +33,13 @@ interface Props {
   name: string
   crumbs: Crumb[]
   onOpenApp: (name: string, kind: 'Deployment' | 'StatefulSet') => void
+  onRequestDelete: (info: {
+    displayName?: string
+    apps: number
+    databases: number
+    buckets: number
+  }) => void
+  onOperated: () => void
 }
 
 function aggregateStatus(statuses: AppStatus[]): AppStatus | null {
@@ -43,10 +50,19 @@ function aggregateStatus(statuses: AppStatus[]): AppStatus | null {
   return 'Stopped'
 }
 
-function ProjectDetailView({ name, crumbs, onOpenApp }: Props): React.JSX.Element {
+function ProjectDetailView({
+  name,
+  crumbs,
+  onOpenApp,
+  onRequestDelete,
+  onOperated
+}: Props): React.JSX.Element {
   const [detail, setDetail] = useState<ProjectDetail | null>(null)
   const [error, setError] = useState('')
   const [refreshing, setRefreshing] = useState(false)
+  const [acting, setActing] = useState<'restart' | 'pause' | 'start' | null>(null)
+  const [actionError, setActionError] = useState('')
+  const actingRef = useRef(false)
 
   const refresh = useCallback(() => {
     setRefreshing(true)
@@ -68,6 +84,23 @@ function ProjectDetailView({ name, crumbs, onOpenApp }: Props): React.JSX.Elemen
       clearInterval(timer)
     }
   }, [refresh])
+
+  const runOperate = (kind: 'restart' | 'pause' | 'start', fn: () => Promise<void>): void => {
+    if (actingRef.current) return
+    actingRef.current = true
+    setActing(kind)
+    setActionError('')
+    fn()
+      .then(() => {
+        onOperated()
+        refresh()
+      })
+      .catch((err: unknown) => setActionError(err instanceof Error ? err.message : String(err)))
+      .finally(() => {
+        actingRef.current = false
+        setActing(null)
+      })
+  }
 
   const status = useMemo(
     () =>
@@ -122,6 +155,13 @@ function ProjectDetailView({ name, crumbs, onOpenApp }: Props): React.JSX.Elemen
   }
 
   const title = detail.displayName ?? detail.name
+  const launchpadApps = detail.apps.filter((a) => a.launchpad)
+  const dbStatuses = detail.databases.map((d) => dbPhaseToStatus(d.phase))
+  const showOperate = launchpadApps.length > 0 || detail.databases.length > 0
+  const showPause =
+    launchpadApps.some((a) => a.status !== 'Stopped') || dbStatuses.some((s) => s !== 'Stopped')
+  const showStart =
+    launchpadApps.some((a) => a.status === 'Stopped') || dbStatuses.some((s) => s === 'Stopped')
 
   return (
     <div className="detail">
@@ -166,6 +206,49 @@ function ProjectDetailView({ name, crumbs, onOpenApp }: Props): React.JSX.Elemen
               打开站点
             </button>
           )}
+          {showOperate && (
+            <>
+              <button
+                className="daction"
+                disabled={acting !== null}
+                onClick={() => runOperate('restart', () => window.helios.restartProject(name))}
+              >
+                {acting === 'restart' ? '重启中…' : '重启'}
+              </button>
+              {showPause && (
+                <button
+                  className="daction daction-secondary"
+                  disabled={acting !== null}
+                  onClick={() => runOperate('pause', () => window.helios.pauseProject(name))}
+                >
+                  {acting === 'pause' ? '暂停中…' : '暂停'}
+                </button>
+              )}
+              {showStart && (
+                <button
+                  className="daction daction-secondary"
+                  disabled={acting !== null}
+                  onClick={() => runOperate('start', () => window.helios.startProject(name))}
+                >
+                  {acting === 'start' ? '启动中…' : '启动'}
+                </button>
+              )}
+            </>
+          )}
+          <button
+            className="daction daction-danger"
+            disabled={acting !== null}
+            onClick={() =>
+              onRequestDelete({
+                displayName: detail.displayName,
+                apps: detail.apps.length,
+                databases: detail.databases.length,
+                buckets: detail.buckets.length
+              })
+            }
+          >
+            删除
+          </button>
           <button
             className={`icon-btn${refreshing ? ' loading' : ''}`}
             title="刷新"
@@ -186,6 +269,7 @@ function ProjectDetailView({ name, crumbs, onOpenApp }: Props): React.JSX.Elemen
       )}
 
       {error && <div className="error">{error}</div>}
+      {actionError && <div className="error">{actionError}</div>}
 
       <StatStrip
         items={[

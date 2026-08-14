@@ -3,7 +3,7 @@
 把项目丢进来，agent 负责部署到 Sealos，一屏看到部署产生的全部资源。
 
 产品方向见 [versions/vision.md](./versions/vision.md)。
-版本记录：[0.1 baseline](./versions/0.1-baseline.md)、[0.2 agent chat](./versions/0.2-agent-chat.md)、[0.3 templates](./versions/0.3-templates.md)。
+版本记录：[0.1 baseline](./versions/0.1-baseline.md)、[0.2 agent chat](./versions/0.2-agent-chat.md)、[0.3 templates](./versions/0.3-templates.md)、[0.4 operate](./versions/0.4-operate.md)。
 
 ## 仓库结构
 
