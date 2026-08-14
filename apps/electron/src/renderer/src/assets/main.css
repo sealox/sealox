@@ -1339,9 +1339,16 @@
 
 .page-head {
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: stretch;
   gap: 12px;
   padding: 48px 48px 16px;
+}
+
+.page-head-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
 }
 
 .page-head h1 {
@@ -3672,6 +3679,48 @@
   transform: translateX(0);
 }
 
+.card-selected {
+  background: rgba(245, 158, 11, 0.07);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(234, 138, 0, 0.55),
+    0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.card-clickable.card-selected:hover {
+  box-shadow:
+    inset 0 0 0 1.5px rgba(234, 138, 0, 0.7),
+    0 8px 20px -6px rgba(0, 0, 0, 0.12);
+}
+
+.card-check {
+  -webkit-app-region: no-drag;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: -8px 0 -8px -6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.card-check:hover {
+  background: var(--hover);
+}
+
+.card-check input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--sun-lo);
+  cursor: pointer;
+}
+
+.card-check input:disabled {
+  cursor: default;
+}
+
 .card-head-actions {
   margin-left: auto;
   display: inline-flex;
@@ -3760,6 +3809,45 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 16px;
+}
+
+.bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-inline-size: 0;
+}
+
+.bulk-bar:disabled {
+  opacity: 0.7;
+}
+
+.bulk-count {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  margin-right: 4px;
+}
+
+.bulk-bar .btn-neutral {
+  height: 30px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.bulk-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bulk-error {
+  flex: 1 0 100%;
+  margin: 4px 0 0;
 }
 
 .card-icon {

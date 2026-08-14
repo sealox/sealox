@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import sealosLogo from '../assets/sealos-logo-gold.svg'
 import AiProxyTab from './AiProxyTab'
 import AppDetailView, { type Crumb } from './AppDetailView'
@@ -250,13 +250,146 @@ type PendingDelete =
       project?: string
       projectTitle?: string
     }
+  | {
+      type: 'projects'
+      names: string[]
+      labels: string[]
+      apps: number
+      databases: number
+      buckets: number
+    }
+  | {
+      type: 'apps'
+      names: string[]
+      inProject: number
+    }
+
+const NAME_LIST_LIMIT = 5
+
+function formatNameList(names: string[], limit = NAME_LIST_LIMIT): string {
+  if (names.length <= limit) return names.join('、')
+  return `${names.slice(0, limit).join('、')} 等 ${names.length} 个`
+}
+
+function buildProjectViews(snapshot: ResourceSnapshot): ProjectView[] {
+  return snapshot.projects.map((project) => {
+    const workloads = snapshot.apps.filter((a) => a.project === project.name)
+    const databases = snapshot.databases.filter((d) => d.project === project.name)
+    const buckets = snapshot.buckets.filter((b) => b.project === project.name)
+    return {
+      project,
+      workloads,
+      databases,
+      buckets,
+      status: aggregateStatus([
+        ...workloads.map((w) => w.status),
+        ...databases.map((d) => dbPhaseToStatus(d.phase))
+      ]),
+      urls: [...new Set(workloads.flatMap((w) => w.urls))]
+    }
+  })
+}
+
+function CardCheckbox({
+  checked,
+  disabled,
+  label,
+  onToggle
+}: {
+  checked: boolean
+  disabled?: boolean
+  label: string
+  onToggle: () => void
+}): React.JSX.Element {
+  return (
+    <label
+      className="card-check"
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        aria-label={label}
+        onChange={(e) => {
+          e.stopPropagation()
+          onToggle()
+        }}
+      />
+    </label>
+  )
+}
+
+function BulkActionBar({
+  count,
+  busy,
+  error,
+  showPause,
+  showStart,
+  onSelectAll,
+  onClear,
+  onPause,
+  onStart,
+  onRestart,
+  onDelete
+}: {
+  count: number
+  busy: boolean
+  error: string
+  showPause: boolean
+  showStart: boolean
+  onSelectAll: () => void
+  onClear: () => void
+  onPause: () => void
+  onStart: () => void
+  onRestart: () => void
+  onDelete: () => void
+}): React.JSX.Element {
+  return (
+    <fieldset className="bulk-bar" disabled={busy}>
+      <span className="bulk-count">已选 {count} 个</span>
+      <button type="button" className="btn-neutral" onClick={onSelectAll}>
+        全选
+      </button>
+      <button type="button" className="btn-neutral" onClick={onClear}>
+        取消选择
+      </button>
+      <span className="bulk-actions">
+        {showPause && (
+          <button type="button" className="daction" onClick={onPause}>
+            暂停
+          </button>
+        )}
+        {showStart && (
+          <button type="button" className="daction" onClick={onStart}>
+            启动
+          </button>
+        )}
+        <button type="button" className="daction" onClick={onRestart}>
+          重启
+        </button>
+        <button type="button" className="daction daction-danger" onClick={onDelete}>
+          删除
+        </button>
+      </span>
+      {error && <div className="bulk-error error">{error}</div>}
+    </fieldset>
+  )
+}
 
 function ProjectCard({
   view,
+  selected,
+  selectDisabled,
+  onToggleSelect,
   onOpen,
   onDelete
 }: {
   view: ProjectView
+  selected: boolean
+  selectDisabled?: boolean
+  onToggleSelect: () => void
   onOpen: () => void
   onDelete: () => void
 }): React.JSX.Element {
@@ -271,7 +404,7 @@ function ProjectCard({
   ].filter(Boolean)
   return (
     <div
-      className="card card-clickable"
+      className={`card card-clickable${selected ? ' card-selected' : ''}`}
       role="button"
       tabIndex={0}
       onClick={onOpen}
@@ -280,6 +413,12 @@ function ProjectCard({
       }}
     >
       <div className="card-head">
+        <CardCheckbox
+          checked={selected}
+          disabled={selectDisabled}
+          label={`选择 ${project.displayName ?? project.name}`}
+          onToggle={onToggleSelect}
+        />
         <span className={statusClass(status)} />
         {project.icon && (
           <img
@@ -298,6 +437,7 @@ function ProjectCard({
             type="button"
             className="card-delete"
             title="删除项目"
+            disabled={selectDisabled}
             onClick={(e) => {
               e.stopPropagation()
               onDelete()
@@ -328,11 +468,17 @@ function ProjectCard({
 
 function WorkloadCard({
   app,
+  selected,
+  selectDisabled,
+  onToggleSelect,
   onOpen,
   onOpenProject,
   onDelete
 }: {
   app: AppWorkload
+  selected?: boolean
+  selectDisabled?: boolean
+  onToggleSelect?: () => void
   onOpen: () => void
   onOpenProject: (project: string) => void
   onDelete?: () => void
@@ -340,7 +486,7 @@ function WorkloadCard({
   const failingPods = app.pods.filter((p) => p.reason)
   return (
     <div
-      className="card card-clickable"
+      className={`card card-clickable${selected ? ' card-selected' : ''}`}
       role="button"
       tabIndex={0}
       onClick={onOpen}
@@ -349,6 +495,14 @@ function WorkloadCard({
       }}
     >
       <div className="card-head">
+        {onToggleSelect && (
+          <CardCheckbox
+            checked={Boolean(selected)}
+            disabled={selectDisabled}
+            label={`选择 ${app.name}`}
+            onToggle={onToggleSelect}
+          />
+        )}
         <span className={statusClass(app.status)} />
         <h3>{app.name}</h3>
         <span className="chip">{app.kind === 'Deployment' ? '无状态' : '有状态'}</span>
@@ -370,6 +524,7 @@ function WorkloadCard({
               type="button"
               className="card-delete"
               title="删除应用"
+              disabled={selectDisabled}
               onClick={(e) => {
                 e.stopPropagation()
                 onDelete()
@@ -452,33 +607,20 @@ function BucketCard({ bucket }: { bucket: BucketInfo }): React.JSX.Element {
 
 function ProjectsTab({
   snapshot,
+  selected,
+  selectDisabled,
+  onToggleSelect,
   onOpenProject,
   onDeleteProject
 }: {
   snapshot: ResourceSnapshot
+  selected: Set<string>
+  selectDisabled?: boolean
+  onToggleSelect: (name: string) => void
   onOpenProject: (name: string) => void
   onDeleteProject: (view: ProjectView) => void
 }): React.JSX.Element {
-  const views = useMemo<ProjectView[]>(
-    () =>
-      snapshot.projects.map((project) => {
-        const workloads = snapshot.apps.filter((a) => a.project === project.name)
-        const databases = snapshot.databases.filter((d) => d.project === project.name)
-        const buckets = snapshot.buckets.filter((b) => b.project === project.name)
-        return {
-          project,
-          workloads,
-          databases,
-          buckets,
-          status: aggregateStatus([
-            ...workloads.map((w) => w.status),
-            ...databases.map((d) => dbPhaseToStatus(d.phase))
-          ]),
-          urls: [...new Set(workloads.flatMap((w) => w.urls))]
-        }
-      }),
-    [snapshot]
-  )
+  const views = useMemo(() => buildProjectViews(snapshot), [snapshot])
 
   if (views.length === 0) {
     return (
@@ -495,6 +637,9 @@ function ProjectsTab({
         <ProjectCard
           key={view.project.name}
           view={view}
+          selected={selected.has(view.project.name)}
+          selectDisabled={selectDisabled}
+          onToggleSelect={() => onToggleSelect(view.project.name)}
           onOpen={() => onOpenProject(view.project.name)}
           onDelete={() => onDeleteProject(view)}
         />
@@ -505,11 +650,17 @@ function ProjectsTab({
 
 function AppsTab({
   snapshot,
+  selected,
+  selectDisabled,
+  onToggleSelect,
   onOpenApp,
   onOpenProject,
   onDeleteApp
 }: {
   snapshot: ResourceSnapshot
+  selected: Set<string>
+  selectDisabled?: boolean
+  onToggleSelect: (name: string) => void
   onOpenApp: (name: string, kind: 'Deployment' | 'StatefulSet') => void
   onOpenProject: (name: string) => void
   onDeleteApp: (app: AppWorkload) => void
@@ -534,6 +685,9 @@ function AppsTab({
           <WorkloadCard
             key={`${app.kind}-${app.name}`}
             app={app}
+            selected={selected.has(app.name)}
+            selectDisabled={selectDisabled}
+            onToggleSelect={() => onToggleSelect(app.name)}
             onOpen={() => onOpenApp(app.name, app.kind)}
             onOpenProject={onOpenProject}
             onDelete={() => onDeleteApp(app)}
@@ -680,11 +834,24 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkError, setBulkError] = useState('')
+  const bulkLockRef = useRef(false)
+
+  const clearSelection = useCallback(() => {
+    setSelected(new Set())
+    setBulkError('')
+  }, [])
 
   /** 切换主导航时离开详情 */
   const navigateTab = useCallback((next: Tab) => {
     setTab(next)
     setDetailStack([])
+    setSelected(new Set())
+    setBulkError('')
+    setPendingDelete(null)
+    setDeleteError('')
   }, [])
 
   /** 打开项目详情（项目属于「项目」tab，从任何入口进入都归位） */
@@ -712,6 +879,141 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
       .finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    clearSelection()
+    setPendingDelete(null)
+    setDeleteError('')
+  }, [tab, status.workspace, status.namespace, clearSelection])
+
+  const projectViews = useMemo(
+    () => (snapshot ? buildProjectViews(snapshot) : []),
+    [snapshot]
+  )
+  const launchpadApps = useMemo(
+    () => snapshot?.apps.filter((a) => a.launchpad) ?? [],
+    [snapshot]
+  )
+  const selectedProjectViews = useMemo(
+    () => projectViews.filter((v) => selected.has(v.project.name)),
+    [projectViews, selected]
+  )
+  const selectedLaunchpadApps = useMemo(
+    () => launchpadApps.filter((a) => selected.has(a.name)),
+    [launchpadApps, selected]
+  )
+  const bulkCount =
+    tab === 'projects'
+      ? selectedProjectViews.length
+      : tab === 'apps'
+        ? selectedLaunchpadApps.length
+        : 0
+  const showBulkBar = bulkCount >= 1 && (tab === 'projects' || tab === 'apps')
+  const showBulkPause =
+    tab === 'projects'
+      ? selectedProjectViews.some((v) => v.status !== 'Stopped')
+      : selectedLaunchpadApps.some((a) => a.status !== 'Stopped')
+  const showBulkStart =
+    tab === 'projects'
+      ? selectedProjectViews.some((v) => v.status === 'Stopped')
+      : selectedLaunchpadApps.some((a) => a.status === 'Stopped')
+  const barLocked = bulkBusy || deleteBusy || pendingDelete !== null
+
+  const toggleSelected = useCallback(
+    (name: string) => {
+      if (barLocked) return
+      setSelected((prev) => {
+        const next = new Set(prev)
+        if (next.has(name)) next.delete(name)
+        else next.add(name)
+        return next
+      })
+      setBulkError('')
+    },
+    [barLocked]
+  )
+
+  const selectAllOperable = useCallback(() => {
+    if (barLocked) return
+    if (tab === 'projects') {
+      setSelected(new Set(projectViews.map((v) => v.project.name)))
+    } else if (tab === 'apps') {
+      setSelected(new Set(launchpadApps.map((a) => a.name)))
+    }
+    setBulkError('')
+  }, [barLocked, tab, projectViews, launchpadApps])
+
+  const runBulkOperate = useCallback(
+    async (actionLabel: string, names: string[], fn: (name: string) => Promise<void>) => {
+      if (bulkLockRef.current || barLocked || names.length === 0) return
+      bulkLockRef.current = true
+      setBulkBusy(true)
+      setBulkError('')
+      const failures: string[] = []
+      try {
+        for (const name of names) {
+          try {
+            await fn(name)
+          } catch (err) {
+            failures.push(`${name}（${errMsg(err)}）`)
+          }
+        }
+        if (failures.length === 0) {
+          setSelected(new Set())
+          setBulkError('')
+        } else {
+          setBulkError(`${actionLabel}失败：${failures.join('；')}`)
+        }
+      } finally {
+        setBulkBusy(false)
+        bulkLockRef.current = false
+        refresh()
+      }
+    },
+    [barLocked, refresh]
+  )
+
+  const onBulkPause = useCallback(() => {
+    if (tab === 'projects') {
+      const names = selectedProjectViews
+        .filter((v) => v.status !== 'Stopped')
+        .map((v) => v.project.name)
+      void runBulkOperate('暂停', names, (name) => window.helios.pauseProject(name))
+    } else {
+      const names = selectedLaunchpadApps
+        .filter((a) => a.status !== 'Stopped')
+        .map((a) => a.name)
+      void runBulkOperate('暂停', names, (name) => window.helios.pauseApp(name))
+    }
+  }, [tab, selectedProjectViews, selectedLaunchpadApps, runBulkOperate])
+
+  const onBulkStart = useCallback(() => {
+    if (tab === 'projects') {
+      const names = selectedProjectViews
+        .filter((v) => v.status === 'Stopped')
+        .map((v) => v.project.name)
+      void runBulkOperate('启动', names, (name) => window.helios.startProject(name))
+    } else {
+      const names = selectedLaunchpadApps.filter((a) => a.status === 'Stopped').map((a) => a.name)
+      void runBulkOperate('启动', names, (name) => window.helios.startApp(name))
+    }
+  }, [tab, selectedProjectViews, selectedLaunchpadApps, runBulkOperate])
+
+  const onBulkRestart = useCallback(() => {
+    if (tab === 'projects') {
+      void runBulkOperate(
+        '重启',
+        selectedProjectViews.map((v) => v.project.name),
+        (name) => window.helios.restartProject(name)
+      )
+    } else {
+      void runBulkOperate(
+        '重启',
+        selectedLaunchpadApps.map((a) => a.name),
+        (name) => window.helios.restartApp(name)
+      )
+    }
+  }, [tab, selectedProjectViews, selectedLaunchpadApps, runBulkOperate])
+
   const requestDeleteProject = useCallback((view: ProjectView) => {
     setDeleteError('')
     setPendingDelete({
@@ -737,6 +1039,28 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
     [snapshot]
   )
 
+  const requestBulkDelete = useCallback(() => {
+    if (barLocked || bulkCount === 0) return
+    setDeleteError('')
+    setBulkError('')
+    if (tab === 'projects') {
+      setPendingDelete({
+        type: 'projects',
+        names: selectedProjectViews.map((v) => v.project.name),
+        labels: selectedProjectViews.map((v) => v.project.displayName || v.project.name),
+        apps: selectedProjectViews.reduce((n, v) => n + v.workloads.length, 0),
+        databases: selectedProjectViews.reduce((n, v) => n + v.databases.length, 0),
+        buckets: selectedProjectViews.reduce((n, v) => n + v.buckets.length, 0)
+      })
+    } else if (tab === 'apps') {
+      setPendingDelete({
+        type: 'apps',
+        names: selectedLaunchpadApps.map((a) => a.name),
+        inProject: selectedLaunchpadApps.filter((a) => a.project).length
+      })
+    }
+  }, [barLocked, bulkCount, tab, selectedProjectViews, selectedLaunchpadApps])
+
   const closeDeleteDialog = useCallback(() => {
     if (deleteBusy) return
     setPendingDelete(null)
@@ -745,9 +1069,48 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
 
   const confirmDelete = useCallback(() => {
     if (!pendingDelete || deleteBusy) return
+    const pending = pendingDelete
+
+    if (pending.type === 'projects' || pending.type === 'apps') {
+      if (bulkLockRef.current || bulkBusy) return
+      bulkLockRef.current = true
+      setDeleteBusy(true)
+      setDeleteError('')
+      setBulkBusy(true)
+      setBulkError('')
+      void (async () => {
+        const failures: string[] = []
+        const fn =
+          pending.type === 'projects'
+            ? (name: string) => window.helios.deleteProject(name)
+            : (name: string) => window.helios.deleteApp(name)
+        try {
+          for (const name of pending.names) {
+            try {
+              await fn(name)
+            } catch (err) {
+              failures.push(`${name}（${errMsg(err)}）`)
+            }
+          }
+          setPendingDelete(null)
+          if (failures.length === 0) {
+            setSelected(new Set())
+            setBulkError('')
+          } else {
+            setBulkError(`删除失败：${failures.join('；')}`)
+          }
+        } finally {
+          setDeleteBusy(false)
+          setBulkBusy(false)
+          bulkLockRef.current = false
+          refresh()
+        }
+      })()
+      return
+    }
+
     setDeleteBusy(true)
     setDeleteError('')
-    const pending = pendingDelete
     const run =
       pending.type === 'project'
         ? window.helios.deleteProject(pending.name)
@@ -780,7 +1143,7 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
         setDeleteError(errMsg(err))
       })
       .finally(() => setDeleteBusy(false))
-  }, [pendingDelete, deleteBusy])
+  }, [pendingDelete, deleteBusy, bulkBusy, refresh])
 
   useEffect(() => {
     const initial = setTimeout(refresh, 0)
@@ -846,6 +1209,7 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
                     // 旧工作空间的资源快照与详情导航立即作废，等新数据
                     setSnapshot(null)
                     setDetailStack([])
+                    clearSelection()
                     refresh()
                   }}
                   onClose={() => setWsOpen(false)}
@@ -1011,11 +1375,28 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
           ) : (
             <div className="page">
               <header className="page-head">
-                <h1>{TAB_TITLE[tab]}</h1>
-                {tab !== 'templates' && tab !== 'aiproxy' && snapshot && (
-                  <span className="hint">
-                    更新于 {new Date(snapshot.fetchedAt).toLocaleTimeString()}
-                  </span>
+                <div className="page-head-row">
+                  <h1>{TAB_TITLE[tab]}</h1>
+                  {tab !== 'templates' && tab !== 'aiproxy' && snapshot && (
+                    <span className="hint">
+                      更新于 {new Date(snapshot.fetchedAt).toLocaleTimeString()}
+                    </span>
+                  )}
+                </div>
+                {showBulkBar && (
+                  <BulkActionBar
+                    count={bulkCount}
+                    busy={barLocked}
+                    error={bulkError}
+                    showPause={showBulkPause}
+                    showStart={showBulkStart}
+                    onSelectAll={selectAllOperable}
+                    onClear={clearSelection}
+                    onPause={onBulkPause}
+                    onStart={onBulkStart}
+                    onRestart={onBulkRestart}
+                    onDelete={requestBulkDelete}
+                  />
                 )}
               </header>
               <div className="page-body">
@@ -1043,6 +1424,9 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
                     {snapshot && tab === 'projects' && (
                       <ProjectsTab
                         snapshot={snapshot}
+                        selected={selected}
+                        selectDisabled={barLocked}
+                        onToggleSelect={toggleSelected}
                         onOpenProject={openProject}
                         onDeleteProject={requestDeleteProject}
                       />
@@ -1050,6 +1434,9 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
                     {snapshot && tab === 'apps' && (
                       <AppsTab
                         snapshot={snapshot}
+                        selected={selected}
+                        selectDisabled={barLocked}
+                        onToggleSelect={toggleSelected}
                         onOpenApp={pushApp}
                         onOpenProject={openProject}
                         onDeleteApp={requestDeleteApp}
@@ -1118,6 +1505,40 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
             「{pendingDelete.name}」是项目「{pendingDelete.projectTitle || pendingDelete.project}
             」的一部分。只删这个应用，项目里的数据库和其它应用还在。要拆整个栈，走项目删除。
           </p>
+        </ConfirmDialog>
+      )}
+      {pendingDelete?.type === 'projects' && (
+        <ConfirmDialog
+          title="删除项目？"
+          confirmLabel={`删除 ${pendingDelete.names.length} 个项目`}
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={closeDeleteDialog}
+          onConfirm={confirmDelete}
+        >
+          <p>将删除 {pendingDelete.names.length} 个项目。</p>
+          <p>
+            合计带走 {pendingDelete.apps} 个应用、{pendingDelete.databases} 个数据库、
+            {pendingDelete.buckets} 个存储桶。不可恢复。
+          </p>
+          <p>项目：{formatNameList(pendingDelete.labels)}</p>
+        </ConfirmDialog>
+      )}
+      {pendingDelete?.type === 'apps' && (
+        <ConfirmDialog
+          title="删除应用？"
+          confirmLabel={`删除 ${pendingDelete.names.length} 个应用`}
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={closeDeleteDialog}
+          onConfirm={confirmDelete}
+        >
+          <p>将删除 {pendingDelete.names.length} 个应用。不可恢复。</p>
+          {pendingDelete.inProject > 0 && (
+            <p>
+              其中 {pendingDelete.inProject} 个是项目的一部分，只删应用、不拆项目。
+            </p>
+          )}
         </ConfirmDialog>
       )}
     </div>
