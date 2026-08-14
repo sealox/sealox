@@ -4,14 +4,16 @@ import rehypeSanitize from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
 import type {
   AgentStatus,
-  ChatActivity,
+  ChatAttachment,
   ChatConversation,
   ChatEvent,
   ChatInputResponse,
   ChatListItem,
   ChatMessage,
-  ChatQuestion
+  ChatQuestion,
+  ChatTraceItem
 } from '../../../shared/types'
+import { MAX_CHAT_FILES } from '../../../shared/types'
 
 interface Props {
   workspaceId: string
@@ -55,6 +57,14 @@ function PlusIcon({ size }: IconProps): React.JSX.Element {
   return (
     <svg {...iconAttrs(size)}>
       <path d="M12 5v14M5 12h14" />
+    </svg>
+  )
+}
+
+function PaperclipIcon({ size }: IconProps): React.JSX.Element {
+  return (
+    <svg {...iconAttrs(size)}>
+      <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
     </svg>
   )
 }
@@ -137,12 +147,20 @@ function BucketIcon({ size }: IconProps): React.JSX.Element {
   )
 }
 
-function upsertActivity(list: ChatActivity[] | undefined, item: ChatActivity): ChatActivity[] {
-  const next = [...(list ?? [])]
-  const index = next.findIndex((row) => row.id === item.id)
-  if (index >= 0) next[index] = item
-  else next.push(item)
-  return next
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function messageTrace(msg: ChatMessage): ChatTraceItem[] {
+  if (msg.trace && msg.trace.length > 0) return msg.trace
+  const items: ChatTraceItem[] = []
+  if (msg.reasoning) items.push({ type: 'thinking', stepIndex: 0, text: msg.reasoning })
+  for (const item of msg.activities ?? []) {
+    items.push({ type: 'activity', ...item })
+  }
+  return items
 }
 
 function patchAssistant(
@@ -187,39 +205,28 @@ function AssistantMarkdown({ text }: { text: string }): React.JSX.Element | null
   )
 }
 
-function liveSummary(msg: ChatMessage): string {
-  const running = msg.activities?.find((item) => item.status === 'running')
-  if (running) return running.detail ? `${running.label} · ${running.detail}` : running.label
-  if (msg.reasoning) return '思考中…'
-  return '正在思考…'
-}
-
 function Trace({ msg }: { msg: ChatMessage }): React.JSX.Element | null {
-  const hasReasoning = Boolean(msg.reasoning)
-  const hasActivities = Boolean(msg.activities && msg.activities.length > 0)
-  if (!hasReasoning && !hasActivities) return null
+  const items = messageTrace(msg)
+  if (items.length === 0) return null
   return (
-    <details
-      className="chat-trace"
-      key={msg.pending ? 'live' : 'done'}
-      ref={(el) => {
-        if (el && msg.pending) el.open = true
-      }}
-    >
-      <summary>{msg.pending ? liveSummary(msg) : '思考过程'}</summary>
-      {msg.reasoning ? <div className="chat-trace-reason">{msg.reasoning}</div> : null}
-      {msg.activities && msg.activities.length > 0 ? (
-        <ul className="chat-activity">
-          {msg.activities.map((item) => (
-            <li key={item.id} className={item.status}>
-              <span className="chat-activity-mark" aria-hidden />
-              <span className="chat-activity-label">{item.label}</span>
-              {item.detail ? <span className="chat-activity-detail">{item.detail}</span> : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </details>
+    <ol className="chat-trace">
+      {items.map((item, index) =>
+        item.type === 'thinking' ? (
+          <li key={`thinking-${item.stepIndex}-${index}`}>
+            <details className="chat-thinking">
+              <summary>thinking</summary>
+              <div className="chat-trace-reason">{item.text}</div>
+            </details>
+          </li>
+        ) : (
+          <li key={item.id} className={`chat-activity-row ${item.status}`}>
+            <span className="chat-activity-mark" aria-hidden />
+            <span className="chat-activity-label">{item.label}</span>
+            {item.detail ? <span className="chat-activity-detail">{item.detail}</span> : null}
+          </li>
+        )
+      )}
+    </ol>
   )
 }
 
@@ -284,6 +291,8 @@ export default function HomeChat({ workspaceId, insetLeft }: Props): React.JSX.E
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [agent, setAgent] = useState<AgentStatus>({ state: 'stopped' })
   const [busy, setBusy] = useState(false)
+  const [pendingFiles, setPendingFiles] = useState<ChatAttachment[]>([])
+  const [attachError, setAttachError] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const logRef = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
@@ -360,13 +369,7 @@ export default function HomeChat({ workspaceId, insetLeft }: Props): React.JSX.E
         if (event.type === 'delta') {
           return patchAssistant(prev, { text: event.text, pending: true, error: undefined })
         }
-        if (event.type === 'reasoning') {
-          return patchAssistant(prev, { reasoning: event.text, pending: true })
-        }
-        return patchAssistant(prev, {
-          activities: upsertActivity(prev.messages.at(-1)?.activities, event.item),
-          pending: true
-        })
+        return patchAssistant(prev, { trace: event.items, pending: true })
       })
     })
   }, [workspaceId, selectedId])
@@ -388,6 +391,8 @@ export default function HomeChat({ workspaceId, insetLeft }: Props): React.JSX.E
     setSelectedId(null)
     setConversation(null)
     setBusy(false)
+    setPendingFiles([])
+    setAttachError('')
     setDrawerOpen(false)
     requestAnimationFrame(() => textareaRef.current?.focus())
   }, [])
@@ -400,25 +405,59 @@ export default function HomeChat({ workspaceId, insetLeft }: Props): React.JSX.E
 
   const submit = useCallback(() => {
     const value = text.trim()
-    if (!value || generating || waitingOnQuestion || busy || agent.state !== 'ready') return
+    if (
+      (!value && pendingFiles.length === 0) ||
+      generating ||
+      waitingOnQuestion ||
+      busy ||
+      agent.state !== 'ready'
+    ) {
+      return
+    }
     const id = selectedId ?? crypto.randomUUID()
+    const files = pendingFiles
     stickToBottom.current = true
     setSelectedId(id)
     setText('')
+    setPendingFiles([])
+    setAttachError('')
     setBusy(true)
     requestAnimationFrame(() => {
       const el = textareaRef.current
       if (!el) return
       el.style.height = 'auto'
     })
-    void window.helios.sendChatMessage(id, value).catch((err: unknown) => {
+    void window.helios.sendChatMessage(id, value, files).catch((err: unknown) => {
       setBusy(false)
       const message = err instanceof Error ? err.message : String(err)
       setConversation((prev) =>
         prev ? patchAssistant(prev, { pending: false, error: message }) : prev
       )
     })
-  }, [text, generating, waitingOnQuestion, busy, agent.state, selectedId])
+  }, [text, pendingFiles, generating, waitingOnQuestion, busy, agent.state, selectedId])
+
+  const attachFiles = useCallback(() => {
+    if (generating || waitingOnQuestion || busy) return
+    setAttachError('')
+    void window.helios.pickChatFiles().then(
+      (picked) => {
+        if (picked.length === 0) return
+        setPendingFiles((prev) => {
+          const seen = new Set(prev.map((file) => file.path))
+          const next = [...prev]
+          for (const file of picked) {
+            if (seen.has(file.path) || next.length >= MAX_CHAT_FILES) continue
+            seen.add(file.path)
+            next.push(file)
+          }
+          return next
+        })
+      },
+      (err: unknown) => {
+        setAttachError(err instanceof Error ? err.message : String(err))
+      }
+    )
+  }, [generating, waitingOnQuestion, busy])
 
   const stop = useCallback(() => {
     if (!selectedId || !generating) return
@@ -441,7 +480,11 @@ export default function HomeChat({ workspaceId, insetLeft }: Props): React.JSX.E
   )
 
   const canSend =
-    Boolean(text.trim()) && !generating && !waitingOnQuestion && !busy && agent.state === 'ready'
+    Boolean(text.trim() || pendingFiles.length > 0) &&
+    !generating &&
+    !waitingOnQuestion &&
+    !busy &&
+    agent.state === 'ready'
 
   return (
     <div className={`hero${chatting ? ' has-chat' : ''}`}>
@@ -518,7 +561,19 @@ export default function HomeChat({ workspaceId, insetLeft }: Props): React.JSX.E
               >
                 {msg.role === 'assistant' ? <Trace msg={msg} /> : null}
                 {msg.role === 'user' ? (
-                  msg.text
+                  <>
+                    {msg.attachments && msg.attachments.length > 0 ? (
+                      <ul className="chat-msg-files">
+                        {msg.attachments.map((file) => (
+                          <li key={file.filename}>
+                            {file.filename}
+                            <span>{formatSize(file.size)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {msg.text}
+                  </>
                 ) : msg.error ? (
                   msg.error
                 ) : (
@@ -528,8 +583,7 @@ export default function HomeChat({ workspaceId, insetLeft }: Props): React.JSX.E
                 msg.pending &&
                 !msg.text &&
                 !msg.error &&
-                !msg.activities?.length &&
-                !msg.reasoning
+                messageTrace(msg).length === 0
                   ? '正在思考…'
                   : null}
                 {msg.role === 'assistant' && !msg.pending && msg.text ? (
@@ -555,6 +609,28 @@ export default function HomeChat({ workspaceId, insetLeft }: Props): React.JSX.E
           </div>
         )}
         <div className="prompt-card">
+          {pendingFiles.length > 0 ? (
+            <ul className="prompt-files">
+              {pendingFiles.map((file) => (
+                <li key={file.path}>
+                  <span className="prompt-file-name" title={file.path}>
+                    {file.filename}
+                  </span>
+                  <span className="prompt-file-size">{formatSize(file.size)}</span>
+                  <button
+                    type="button"
+                    className="prompt-file-remove"
+                    title="移除"
+                    onClick={() =>
+                      setPendingFiles((prev) => prev.filter((item) => item.path !== file.path))
+                    }
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <textarea
             ref={textareaRef}
             rows={1}
@@ -572,8 +648,15 @@ export default function HomeChat({ workspaceId, insetLeft }: Props): React.JSX.E
             }}
           />
           <div className="prompt-actions">
-            <button className="icon-btn" title="添加项目文件夹">
-              <PlusIcon size={16} />
+            <button
+              className="icon-btn"
+              title="添加文件"
+              onClick={attachFiles}
+              disabled={
+                generating || waitingOnQuestion || busy || pendingFiles.length >= MAX_CHAT_FILES
+              }
+            >
+              <PaperclipIcon size={16} />
             </button>
             {generating ? (
               <button className="send-btn ready stop" title="停止生成" onClick={stop}>
@@ -591,6 +674,7 @@ export default function HomeChat({ workspaceId, insetLeft }: Props): React.JSX.E
             )}
           </div>
         </div>
+        {attachError && <div className="prompt-notice error">{attachError}</div>}
         {agent.state !== 'ready' && (
           <div className={`prompt-notice${agent.state === 'error' ? ' error' : ''}`}>
             {agent.state === 'starting' || agent.state === 'stopped'

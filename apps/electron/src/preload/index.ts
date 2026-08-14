@@ -6,6 +6,7 @@ import type {
   AiProxyOverview,
   AppDetail,
   AppMonitor,
+  ChatAttachment,
   ChatConversation,
   ChatEvent,
   ChatInputResponse,
@@ -62,8 +63,12 @@ const helios: HeliosApi = {
   listChats: (): Promise<ChatListItem[]> => ipcRenderer.invoke('helios:chat-list'),
   getChat: (id: string): Promise<ChatConversation | null> =>
     ipcRenderer.invoke('helios:chat-get', id),
-  sendChatMessage: (conversationId: string, text: string): Promise<void> =>
-    ipcRenderer.invoke('helios:chat-send', conversationId, text),
+  pickChatFiles: (): Promise<ChatAttachment[]> => ipcRenderer.invoke('helios:chat-pick-files'),
+  sendChatMessage: (
+    conversationId: string,
+    text: string,
+    attachments?: ChatAttachment[]
+  ): Promise<void> => ipcRenderer.invoke('helios:chat-send', conversationId, text, attachments),
   cancelChat: (conversationId: string): Promise<void> =>
     ipcRenderer.invoke('helios:chat-cancel', conversationId),
   respondChat: (conversationId: string, responses: ChatInputResponse[]): Promise<void> =>

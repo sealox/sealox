@@ -720,6 +720,85 @@
   color: var(--text-primary);
 }
 
+.prompt-actions .icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.prompt-files {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 8px 8px;
+  padding: 0;
+}
+
+.prompt-files li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: 28px;
+  padding: 0 6px 0 10px;
+  border-radius: 999px;
+  background: oklch(0.96 0 107);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.prompt-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+
+.prompt-file-size {
+  color: var(--text-tertiary);
+  flex: none;
+}
+
+.prompt-file-remove {
+  -webkit-app-region: no-drag;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.prompt-file-remove:hover {
+  background: var(--nav-active);
+  color: var(--text-primary);
+}
+
+.chat-msg-files {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chat-msg-files li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.chat-msg-files span {
+  opacity: 0.7;
+  font-size: 11px;
+}
+
 .send-btn {
   -webkit-app-region: no-drag;
   margin-left: auto;
@@ -817,11 +896,15 @@
 .chat-reasoning,
 .chat-trace {
   margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   color: var(--text-secondary);
 }
 
-.chat-reasoning summary,
-.chat-trace summary {
+.chat-thinking summary {
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;
@@ -830,22 +913,18 @@
   list-style: none;
 }
 
-.chat-reasoning summary::-webkit-details-marker,
-.chat-trace summary::-webkit-details-marker {
+.chat-thinking summary::-webkit-details-marker {
   display: none;
 }
 
-.chat-reasoning summary::before,
-.chat-trace summary::before {
+.chat-thinking summary::before {
   content: '▸ ';
 }
 
-.chat-reasoning[open] summary::before,
-.chat-trace[open] summary::before {
+.chat-thinking[open] summary::before {
   content: '▾ ';
 }
 
-.chat-reasoning div,
 .chat-trace-reason {
   margin-top: 6px;
   font-size: 13px;
@@ -853,16 +932,7 @@
   white-space: pre-wrap;
 }
 
-.chat-activity {
-  list-style: none;
-  margin: 0 0 10px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.chat-activity li {
+.chat-activity-row {
   display: grid;
   grid-template-columns: 12px minmax(0, auto) minmax(0, 1fr);
   gap: 8px;
@@ -880,16 +950,16 @@
   background: var(--progressing);
 }
 
-.chat-activity li.running .chat-activity-mark {
+.chat-activity-row.running .chat-activity-mark {
   animation: chat-pulse 1s ease-in-out infinite;
 }
 
-.chat-activity li.done .chat-activity-mark {
+.chat-activity-row.done .chat-activity-mark {
   background: var(--running);
   animation: none;
 }
 
-.chat-activity li.error .chat-activity-mark {
+.chat-activity-row.error .chat-activity-mark {
   background: var(--failed);
   animation: none;
 }

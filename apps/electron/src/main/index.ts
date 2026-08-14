@@ -2,7 +2,7 @@ import { app, shell, clipboard, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import type { ChatInputResponse, LoginEvent } from '../shared/types'
+import type { ChatAttachment, ChatInputResponse, LoginEvent } from '../shared/types'
 import {
   getAgentStatus,
   restartAgent,
@@ -10,6 +10,7 @@ import {
   stopAgent,
   listChats,
   getChat,
+  pickChatFiles,
   sendChatMessage,
   cancelChat,
   respondChat,
@@ -141,8 +142,13 @@ function registerIpc(): void {
   ipcMain.handle('helios:agent-status', () => getAgentStatus())
   ipcMain.handle('helios:chat-list', () => listChats())
   ipcMain.handle('helios:chat-get', (_event, id: string) => getChat(id))
-  ipcMain.handle('helios:chat-send', (_event, conversationId: string, text: string) =>
-    sendChatMessage(conversationId, text)
+  ipcMain.handle('helios:chat-pick-files', (event) =>
+    pickChatFiles(BrowserWindow.fromWebContents(event.sender))
+  )
+  ipcMain.handle(
+    'helios:chat-send',
+    (_event, conversationId: string, text: string, attachments?: ChatAttachment[]) =>
+      sendChatMessage(conversationId, text, attachments)
   )
   ipcMain.handle('helios:chat-cancel', (_event, conversationId: string) =>
     cancelChat(conversationId)

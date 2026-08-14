@@ -6,12 +6,14 @@ import { join } from 'path'
 import type {
   AgentStatus,
   ChatActivity,
+  ChatAttachment,
   ChatConversation,
   ChatEvent,
   ChatInputResponse,
   ChatListItem,
   ChatMessage,
-  ChatQuestion
+  ChatQuestion,
+  ChatTraceItem
 } from '../../shared/types'
 import { getStatus } from '../sealos/auth'
 import { ensureHeliosKey } from '../sealos/aiproxy'
@@ -24,6 +26,7 @@ import {
   titleFromMessage,
   writeConversation
 } from './chat-store'
+import { readChatFiles } from './chat-files'
 
 const EVE_HOST = '127.0.0.1'
 const EVE_PORT = 24721
@@ -48,7 +51,6 @@ interface LiveSession {
   } | null
   lastAssistant: string
   answerByStep: Map<number, string>
-  reasoningByStep: Map<number, string>
   activities: Map<string, ChatActivity>
   record: ChatConversation
 }
@@ -237,7 +239,6 @@ function lastAssistantMessage(session: LiveSession): ChatMessage | undefined {
 function resetTurnTrace(session: LiveSession): void {
   session.lastAssistant = ''
   session.answerByStep = new Map()
-  session.reasoningByStep = new Map()
   session.activities.clear()
 }
 
@@ -312,13 +313,52 @@ function describeAction(action: Record<string, unknown>): Pick<ChatActivity, 'la
   return { label: tool, detail: input ? clip(JSON.stringify(input)) : undefined }
 }
 
+function assistantTrace(session: LiveSession): ChatTraceItem[] {
+  const last = lastAssistantMessage(session)
+  if (!last) return []
+  if (!last.trace) last.trace = []
+  return last.trace
+}
+
+function emitTrace(session: LiveSession): void {
+  const last = lastAssistantMessage(session)
+  if (!last?.trace) return
+  emitChat({
+    type: 'trace',
+    conversationId: session.conversationId,
+    items: last.trace.map((item) => ({ ...item }))
+  })
+}
+
+function upsertThinking(session: LiveSession, stepIndex: number, text: string): void {
+  const last = lastAssistantMessage(session)
+  if (!last) return
+  const trace = assistantTrace(session)
+  const existing = trace.findIndex(
+    (item) => item.type === 'thinking' && item.stepIndex === stepIndex
+  )
+  if (existing >= 0) {
+    trace[existing] = { type: 'thinking', stepIndex, text }
+  } else {
+    trace.push({ type: 'thinking', stepIndex, text })
+  }
+  last.reasoning = undefined
+  emitTrace(session)
+}
+
 function emitActivity(session: LiveSession, item: ChatActivity): void {
   const detail = item.detail ? clip(item.detail) : undefined
   const next = { ...item, detail }
   session.activities.set(next.id, next)
   const last = lastAssistantMessage(session)
-  if (last) last.activities = [...session.activities.values()]
-  emitChat({ type: 'activity', conversationId: session.conversationId, item: next })
+  if (!last) return
+  const trace = assistantTrace(session)
+  const existing = trace.findIndex((row) => row.type === 'activity' && row.id === next.id)
+  const block: ChatTraceItem = { type: 'activity', ...next }
+  if (existing >= 0) trace[existing] = block
+  else trace.push(block)
+  last.activities = undefined
+  emitTrace(session)
 }
 
 function handleActionsRequested(
@@ -408,12 +448,8 @@ function handleStreamEvent(
     case 'reasoning.appended': {
       const step = typeof event.data?.stepIndex === 'number' ? event.data.stepIndex : 0
       const soFar = event.data?.reasoningSoFar
-      if (typeof soFar === 'string') {
-        session.reasoningByStep.set(step, soFar)
-        const text = joinSteps(session.reasoningByStep)
-        const last = lastAssistantMessage(session)
-        if (last) last.reasoning = text
-        emitChat({ type: 'reasoning', conversationId: session.conversationId, text })
+      if (typeof soFar === 'string' && soFar.trim()) {
+        upsertThinking(session, step, soFar)
       }
       break
     }
@@ -564,14 +600,29 @@ function isSessionGone(err: unknown): boolean {
   )
 }
 
-type SessionPostBody = { message: string } | { inputResponses: ChatInputResponse[] }
+type EveFilePart = {
+  type: 'file'
+  data: string
+  mediaType: string
+  filename: string
+}
 
-async function postSession(path: string, body: SessionPostBody): Promise<{ sessionId: string }> {
+type EveTextPart = { type: 'text'; text: string }
+
+type EveMessage = string | Array<EveTextPart | EveFilePart>
+
+type SessionPostBody = { message: EveMessage } | { inputResponses: ChatInputResponse[] }
+
+async function postSession(
+  path: string,
+  body: SessionPostBody,
+  timeoutMs = 30_000
+): Promise<{ sessionId: string }> {
   const resp = await fetch(`${EVE_ORIGIN}${path}`, {
     method: 'POST',
     headers: eveAuthHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000)
+    signal: AbortSignal.timeout(timeoutMs)
   })
   const parsed = (await resp.json().catch(() => null)) as {
     ok?: boolean
@@ -622,7 +673,6 @@ function makeLive(record: ChatConversation): LiveSession {
     turnWaiter: null,
     lastAssistant: '',
     answerByStep: new Map(),
-    reasoningByStep: new Map(),
     activities: new Map(),
     record
   }
@@ -649,11 +699,15 @@ function waitForTurnSettle(session: LiveSession): Promise<void> {
   })
 }
 
-async function ensureEveSession(session: LiveSession, message: string): Promise<void> {
+async function ensureEveSession(
+  session: LiveSession,
+  message: EveMessage,
+  timeoutMs = 30_000
+): Promise<void> {
   if (session.eveSessionId) {
     openStream(session)
     try {
-      await postSession(`/eve/v1/session/${session.eveSessionId}`, { message })
+      await postSession(`/eve/v1/session/${session.eveSessionId}`, { message }, timeoutMs)
       return
     } catch (err) {
       if (!isSessionGone(err)) throw err
@@ -663,12 +717,14 @@ async function ensureEveSession(session: LiveSession, message: string): Promise<
       session.record.eveSessionId = null
     }
   }
-  const created = await postSession('/eve/v1/session', { message })
+  const created = await postSession('/eve/v1/session', { message }, timeoutMs)
   session.eveSessionId = created.sessionId
   session.record.eveSessionId = created.sessionId
   session.streamIndex = 0
   openStream(session)
 }
+
+export { pickChatFiles } from './chat-files'
 
 export async function listChats(): Promise<ChatListItem[]> {
   return listConversations(currentWorkspaceId())
@@ -683,9 +739,13 @@ export async function getChat(id: string): Promise<ChatConversation | null> {
   return record ? cloneRecord(record) : null
 }
 
-export async function sendChatMessage(conversationId: string, text: string): Promise<void> {
+export async function sendChatMessage(
+  conversationId: string,
+  text: string,
+  attachments: ChatAttachment[] = []
+): Promise<void> {
   const trimmed = text.trim()
-  if (!trimmed) throw new Error('消息不能为空')
+  if (!trimmed && attachments.length === 0) throw new Error('消息不能为空')
   if (!isConversationId(conversationId)) throw new Error('对话 id 不合法')
   if (status.state !== 'ready') {
     throw new Error(status.detail || 'AI 服务还没准备好')
@@ -695,12 +755,13 @@ export async function sendChatMessage(conversationId: string, text: string): Pro
   if (session && session.workspaceId !== workspaceId) {
     throw new Error('对话不属于当前工作空间')
   }
+  const titleSource = trimmed || attachments[0]?.filename || '新对话'
   if (!session) {
     const existing = await readConversation(workspaceId, conversationId)
     session = makeLive(
       existing ?? {
         id: conversationId,
-        title: titleFromMessage(trimmed),
+        title: titleFromMessage(titleSource),
         workspaceId,
         eveSessionId: null,
         streamIndex: 0,
@@ -712,13 +773,38 @@ export async function sendChatMessage(conversationId: string, text: string): Pro
     live.set(conversationId, session)
   }
   if (session.turnBusy) throw new Error('上一轮还在回复')
+  const files = attachments.length > 0 ? await readChatFiles(attachments) : []
+  const eveMessage: EveMessage =
+    files.length === 0
+      ? trimmed
+      : [
+          ...(trimmed ? [{ type: 'text' as const, text: trimmed }] : []),
+          ...files.map((file) => ({
+            type: 'file' as const,
+            data: file.dataUrl,
+            mediaType: file.mediaType,
+            filename: file.filename
+          }))
+        ]
   session.turnBusy = true
   if (!session.record.messages.some((msg) => msg.role === 'user')) {
-    session.record.title = titleFromMessage(trimmed)
+    session.record.title = titleFromMessage(titleSource)
   }
   session.record.questions = undefined
   session.record.messages.push(
-    { id: randomUUID(), role: 'user', text: trimmed },
+    {
+      id: randomUUID(),
+      role: 'user',
+      text: trimmed,
+      attachments:
+        files.length > 0
+          ? files.map((file) => ({
+              filename: file.filename,
+              mediaType: file.mediaType,
+              size: file.size
+            }))
+          : undefined
+    },
     { id: randomUUID(), role: 'assistant', text: '', pending: true }
   )
   const settled = waitForTurnSettle(session)
@@ -726,7 +812,7 @@ export async function sendChatMessage(conversationId: string, text: string): Pro
     try {
       emitSnapshot(session)
       await persist(session)
-      await ensureEveSession(session, trimmed)
+      await ensureEveSession(session, eveMessage, files.length > 0 ? 120_000 : 30_000)
     } catch (err) {
       failTurn(session, err instanceof Error ? err.message : String(err))
     }

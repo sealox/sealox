@@ -414,6 +414,10 @@ export interface ChatActivity {
   status: ChatActivityStatus
 }
 
+export type ChatTraceItem =
+  | { type: 'thinking'; stepIndex: number; text: string }
+  | { type: 'activity'; id: string; label: string; detail?: string; status: ChatActivityStatus }
+
 export interface ChatQuestionOption {
   id: string
   label: string
@@ -434,10 +438,27 @@ export interface ChatInputResponse {
   text?: string
 }
 
+export interface ChatAttachment {
+  path: string
+  filename: string
+  mediaType: string
+  size: number
+}
+
+export const MAX_CHAT_FILES = 8
+
+export interface ChatStoredAttachment {
+  filename: string
+  mediaType: string
+  size: number
+}
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   text: string
+  attachments?: ChatStoredAttachment[]
+  trace?: ChatTraceItem[]
   reasoning?: string
   activities?: ChatActivity[]
   pending?: boolean
@@ -465,8 +486,7 @@ export interface ChatConversation {
 export type ChatEvent =
   | { type: 'snapshot'; conversation: ChatConversation }
   | { type: 'delta'; conversationId: string; text: string }
-  | { type: 'reasoning'; conversationId: string; text: string }
-  | { type: 'activity'; conversationId: string; item: ChatActivity }
+  | { type: 'trace'; conversationId: string; items: ChatTraceItem[] }
   | { type: 'question'; conversationId: string; questions: ChatQuestion[] }
   | { type: 'waiting'; conversationId: string }
   | { type: 'done'; conversationId: string }
@@ -503,7 +523,12 @@ export interface HeliosApi {
   getAgentStatus(): Promise<AgentStatus>
   listChats(): Promise<ChatListItem[]>
   getChat(id: string): Promise<ChatConversation | null>
-  sendChatMessage(conversationId: string, text: string): Promise<void>
+  pickChatFiles(): Promise<ChatAttachment[]>
+  sendChatMessage(
+    conversationId: string,
+    text: string,
+    attachments?: ChatAttachment[]
+  ): Promise<void>
   cancelChat(conversationId: string): Promise<void>
   respondChat(conversationId: string, responses: ChatInputResponse[]): Promise<void>
   deleteChat(conversationId: string): Promise<void>
