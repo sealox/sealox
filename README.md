@@ -2,7 +2,7 @@
 
 把项目丢进来，agent 负责部署到 Sealos，一屏看到部署产生的全部资源。
 
-规划与决策记录见 [version-1.md](./version-1.md)。
+规划与决策记录见 [versions/0.1.0-base-line.md](./versions/0.1.0-base-line.md)。
 
 ## 仓库结构
 
