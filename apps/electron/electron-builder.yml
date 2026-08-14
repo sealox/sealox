@@ -11,6 +11,11 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+extraResources:
+  - from: ../eve/.output
+    to: eve/.output
+  - from: vendor/node-darwin-arm64/bin/node
+    to: node/bin/node
 win:
   executableName: helios
 nsis:
@@ -19,15 +24,20 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  identity: "-"
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch:
+        - arm64
+  entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+    - NSDocumentsFolderUsageDescription: Helios 需要读取你拖入的项目文件夹。
+    - NSDownloadsFolderUsageDescription: Helios 需要读取你拖入的项目文件夹。
   notarize: false
 dmg:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: Helios-${version}-mac-arm64.${ext}
 linux:
   target:
     - AppImage

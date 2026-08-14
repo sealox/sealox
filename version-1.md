@@ -53,9 +53,11 @@
   ResourceQuota——与 costcenter usage 接口同源，随资源快照 15s 轮询刷新）；
   头像入口进**用户信息**，右下角全局刷新。
 - **开始**（默认页）：白底＋logo 淡金日光背景（Sealos 中性调性，金色只做
-  点缀）+ 居中输入框（标题"今天想开发点什么？"）已接到本地 eve：发送后流式
-  显示模型回复。拖入文件夹 / 粘贴 git / 真正部署仍是 M2。模板建议 chips 只
-  填输入框。右下角常驻 "Hi · Follow me on X" 胶囊（X logo，点击外部浏览器
+  点缀）+ 居中输入框（标题"今天想开发点什么？"）接到本地 eve。发送后流式
+  显示模型回复，并展示工具活动（`load_skill` / `bash` / 读文件等）和模型
+  若提供的 reasoning。能力范围与 use-sealos 一致：对话即可部署、排障、管
+  数据库/存储。拖入文件夹 / 粘贴 git 作为入口仍未做；模板建议 chips 只填
+  输入框。右下角常驻 "Hi · Follow me on X" 胶囊（X logo，点击外部浏览器
   打开 x.com/norberia_cz）。
 - **项目**：项目 = 模板实例（namespace 里的 `instances.app.sealos.io` CR，
   与 Template 前端同源直读，不再依赖 template.{region} 服务），由多个组件
@@ -94,7 +96,7 @@
 - **模板**：sealos.io 应用商店目录（212+ 模板，官网 `/api/apps/en`，主进程
   30 分钟缓存）——分类/搜索/排序/分页，卡片样式对齐官网（浅色适配）；模板名
   跳官网详情，"部署"按钮暂以外部浏览器打开用户 region 控制台的模板部署页，
-  M2 改走 agent。
+  对话里走 agent 部署已经可用。
 - **数据库**：KubeBlocks Cluster 列表——引擎、版本、阶段、所属实例。
 - **存储**：ObjectStorageBucket 列表——策略（私有/公开读/公开读写）、实际
   桶名、创建时间。
@@ -116,8 +118,8 @@
 - 数据规则：全部直读 Sealos 现有 API（namespace-scoped k8s API +
   applaunchpad 监控 API），本地不存业务状态；15 秒自动刷新 + 手动刷新；
   数据库/环境变量只展示 secret 引用名，不显示明文。
-- 留给 M3：日志实时流式（详情页已有按需日志快照）、失败诊断（agent 读
-  日志/events 输出人话结论）、以项目为单位的整体删除（需二次确认）。
+- 留给 M3：日志实时流式（详情页已有按需日志快照）、失败诊断的结构化结论、
+  以项目为单位的整体删除（需二次确认）。工具活动时间线已在首页。
 
 ## 非目标（v1 明确不做）
 
@@ -129,23 +131,34 @@
 ## 架构（已定的部分）
 
 - **仓库结构**：npm workspaces monorepo，两个 app——`apps/electron`（桌面端）
-  和 `apps/eve`（本地 agent 服务）。eve 已作为后台 AI 跑通首页对话；部署
-  决策树仍待 M2 从 use-sealos skill 移植。
+  和 `apps/eve`（本地 agent 服务）。eve 是部署逻辑的宿主：内置 use-sealos
+  skill（从 sealos-skills-next 拷贝，不会自动同步），能力范围与该 skill
+  对齐。
 - **Electron**：唯一客户端。UI 栈：electron-vite + React + TypeScript；浅色
   主题。渲染进程不直连 eve（开发态跨端口 CORS、打包后 `file://` 同源都过不
-  去）：主进程 HTTP 调 eve，对话经 IPC 流到首页。
-- **Vercel eve（本地运行）**：登录后主进程在后台拉起
-  `eve dev --no-ui --host 127.0.0.1 --port 24721`，退出/登出杀掉，切换工作
+  去）：主进程 HTTP 调 eve，对话经 IPC 流到首页（文本、reasoning、工具活动）。
+- **Vercel eve（本地运行）**：登录后主进程在后台拉起 eve。开发态
+  `eve dev --no-ui --host 127.0.0.1 --port 24721`；打包态跑 `eve build` 产物
+  （`.output/server/index.mjs`）并捆绑官方 Node 24。退出/登出杀掉，切换工作
   空间则换凭证重启。路由走 eve 默认 HTTP（`POST /eve/v1/session`、
-  `GET /eve/v1/session/:id/stream`）。当前切片关掉了 bash/文件/联网等内置
-  工具，只对话。
+  `GET /eve/v1/session/:id/stream`）。鉴权：开发 `localDev()`，打包
+  `httpBasic(helios / 本地密码)`。一轮对话跟 `session.waiting` /
+  `turn.failed` 结束，不跟墙上时钟。
+- **Agent 工具与 sandbox**：eve 默认 bash / 文件 / 联网 / todo / ask_question
+  已启用。bash 不走 Docker/microsandbox——`helios-host` 在用户本机跑
+  `/bin/bash`，`HOME` 为 `~/.helios/home`（`.sealos` 软链到真实
+  `~/.sealos`），PATH 补 Homebrew / Docker。skill 脚本是
+  `python3` + `kubectl`（源码构建还要 `docker`）；没装这些 CLI 时部署会失败。
+  首页把 `actions.requested` / `action.result` / `reasoning.appended` 投成
+  活动行；命令截断展示，不把工具全文（可能含密钥）倒进 UI。
 - **模型凭证**：不走 Vercel AI Gateway。主进程向当前工作空间的 AI Proxy 确
   保一把名为 `helios` 的 Key（没有就创建，停用就打开），密钥只进 eve 子进
   程环境变量（`HELIOS_AI_BASE_URL` / `HELIOS_AI_KEY` / `HELIOS_AI_MODEL`），
   不进渲染进程。模型按该区域 `/api/models/enabled` 选择：聊天模型里优先
   DeepSeek Flash（id 或厂商含 `deepseek` 且含 `flash`，`deepseek-v4-flash` /
   `deepseek-flash` 优先），没有则回退 `gemini-3.5-flash`。eve 用
-  `@ai-sdk/openai-compatible` 直连 `https://aiproxy.{region}/v1`。
+  `@ai-sdk/openai-compatible` 直连 `https://aiproxy.{region}/v1`。Flash 类
+  模型常常不吐 reasoning token，这时首页只有工具活动、没有「思考过程」。
 - **Sealos**：零改动，只消费现有 API。
 - **品牌**：logo 采用 Sealos 官方 mark 的金色重配色，源资产在根 `assets/`
   （blackgold 黑底、whitegold 白底两版）。侧边栏用无底纯金标
@@ -153,8 +166,8 @@
   加载页用 `logo.svg`；应用图标用 whitegold（与侧边栏同一套金，dock 与应用内
   观感一致）——dev 下主进程 `app.dock.setIcon(resources/icon.png)`，打包由
   electron-builder 从 `build/icon.png` 生成。
-- 数据流：对话 / 部署动作走 Electron 主进程 → 本地 eve → Sealos AI Proxy
-  （模型）或 Sealos API（部署，M2）；资源展示走 Electron → Sealos API 直连。
+- 数据流：对话 / 部署动作走 Electron 主进程 → 本地 eve（bash + use-sealos
+  脚本 / kubectl）→ Sealos；资源展示走 Electron → Sealos API 直连。
 
 ## 工程约定
 
@@ -178,8 +191,10 @@
 
 ## 参考
 
-- use-sealos skill：`/Users/che/Documents/GitHub/sealos-skills-next`
-  （部署决策树、`sealos-api.py`、`wait-app.sh`、references/ 下的平台约定）
+- use-sealos skill：源仓库
+  `https://github.com/norberia/sealos-skills-next`；Helios 内一份拷贝在
+  `apps/eve/agent/skills/use-sealos/`（决策树、`sealos-api.py`、
+  `wait-app.sh`、references/）。两边不会自动同步。
 - Sealos 源码：`/Users/che/Documents/GitHub/sealos`
   （控制台各前端实际调用的 API 定义）；仓库内 `dev-assets/sealos` 有
   applaunchpad/dbprovider/template 三个前端的 sparse clone，详情页的字段
@@ -193,20 +208,22 @@
 ## 未决问题
 
 1. 源码构建依赖：v1 是否要求用户本机有 docker；没有 docker 时的降级方案。
+   当前 agent 还要求本机有 `python3` 和 `kubectl`，没有则部署失败。若要对
+   「没装 CLI 的人」可用，执行层应改成 TypeScript tool（Electron 已有 k8s
+   客户端），skill 只留决策树。
 2. 日志"实时"的实现程度：轮询还是 watch（M3 确认）。
-3. 打包后的 eve：当前 dev 用 `eve dev`（`localDev()` 鉴权）。dmg 需改为
-   `eve build` + `eve start`，并换掉 `placeholderAuth`（例如主进程与 eve
-   共享 jwtHmac / httpBasic）。
+3. 拖入文件夹 / 粘贴 git 作为部署入口（对话部署已经能走三条路径）。
 
 ## 里程碑
 
 1. **M1 只读链路**（已完成，2026-08-13）：Electron 壳 + 登录 + 侧边栏资源
    展示；之后补了项目/应用详情、工作空间面板、AI Proxy 页。
-2. **M2 部署链路**（进行中，2026-08-14）：本地 eve 已作为后台 AI 服务，首页
-   能收到模型回复。待按难度递增接三条部署路径——模板店 → 官方镜像 → 源码
-   构建。
-3. **M3 体验闭环**：实时进度流、失败诊断、整体删除。
-4. **M4 交付**：打包 dmg，准备与 Sealos 控制台的对比演示。
+2. **M2 部署链路**（进行中，2026-08-14）：use-sealos 已内置，首页能看到工
+   具过程，对话可走模板店 / 官方镜像 / 源码构建（依赖本机 CLI）。待补拖入
+   文件夹与 git 入口；模板页「部署」按钮仍跳控制台。
+3. **M3 体验闭环**：失败诊断的结构化结论、整体删除；进度流已有工具活动层。
+4. **M4 交付**：打包 dmg（mac arm64 已能打出，内嵌 eve + Node），准备与
+   Sealos 控制台的对比演示。
 
 ## 验收标准
 

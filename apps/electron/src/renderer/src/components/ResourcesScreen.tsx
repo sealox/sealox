@@ -10,6 +10,7 @@ import type {
   AppStatus,
   AppWorkload,
   BucketInfo,
+  ChatActivity,
   ChatEvent,
   DatabaseInfo,
   ProjectInfo,
@@ -458,8 +459,18 @@ const PROMPT_SUGGESTIONS: Array<{ label: string; icon: React.JSX.Element }> = [
 interface ChatMessage {
   role: 'user' | 'assistant'
   text: string
+  reasoning?: string
+  activities?: ChatActivity[]
   pending?: boolean
   error?: string
+}
+
+function upsertActivity(list: ChatActivity[] | undefined, item: ChatActivity): ChatActivity[] {
+  const next = [...(list ?? [])]
+  const index = next.findIndex((row) => row.id === item.id)
+  if (index >= 0) next[index] = item
+  else next.push(item)
+  return next
 }
 
 function HomeHero(): React.JSX.Element {
@@ -483,6 +494,30 @@ function HomeHero(): React.JSX.Element {
           const last = next[next.length - 1]
           if (last?.role !== 'assistant') return prev
           next[next.length - 1] = { ...last, text: event.text, pending: true, error: undefined }
+          return next
+        })
+        return
+      }
+      if (event.type === 'reasoning') {
+        setMessages((prev) => {
+          const next = [...prev]
+          const last = next[next.length - 1]
+          if (last?.role !== 'assistant') return prev
+          next[next.length - 1] = { ...last, reasoning: event.text, pending: true }
+          return next
+        })
+        return
+      }
+      if (event.type === 'activity') {
+        setMessages((prev) => {
+          const next = [...prev]
+          const last = next[next.length - 1]
+          if (last?.role !== 'assistant') return prev
+          next[next.length - 1] = {
+            ...last,
+            activities: upsertActivity(last.activities, event.item),
+            pending: true
+          }
           return next
         })
         return
@@ -564,7 +599,31 @@ function HomeHero(): React.JSX.Element {
                 key={`${msg.role}-${index}`}
                 className={`chat-msg ${msg.role}${msg.error ? ' error' : ''}`}
               >
-                {msg.error ? msg.error : msg.text || (msg.pending ? '…' : '')}
+                {msg.role === 'assistant' && msg.reasoning ? (
+                  <details className="chat-reasoning" open={msg.pending}>
+                    <summary>思考过程</summary>
+                    <div>{msg.reasoning}</div>
+                  </details>
+                ) : null}
+                {msg.role === 'assistant' && msg.activities && msg.activities.length > 0 ? (
+                  <ul className="chat-activity">
+                    {msg.activities.map((item) => (
+                      <li key={item.id} className={item.status}>
+                        <span className="chat-activity-mark" aria-hidden />
+                        <span className="chat-activity-label">{item.label}</span>
+                        {item.detail ? <span className="chat-activity-detail">{item.detail}</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {msg.error
+                  ? msg.error
+                  : msg.text ||
+                    (msg.pending
+                      ? msg.activities?.length
+                        ? ''
+                        : '正在思考…'
+                      : '')}
               </div>
             ))}
           </div>

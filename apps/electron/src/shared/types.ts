@@ -405,8 +405,19 @@ export interface AgentStatus {
   detail?: string
 }
 
+export type ChatActivityStatus = 'running' | 'done' | 'error'
+
+export interface ChatActivity {
+  id: string
+  label: string
+  detail?: string
+  status: ChatActivityStatus
+}
+
 export type ChatEvent =
   | { type: 'delta'; text: string }
+  | { type: 'reasoning'; text: string }
+  | { type: 'activity'; item: ChatActivity }
   | { type: 'done' }
   | { type: 'error'; message: string }
 
