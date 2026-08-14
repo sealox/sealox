@@ -1,0 +1,39 @@
+---
+description: Sealos API 以 labring/sealos 源码为准；dev-assets 缺失时先 clone 再查实现。
+alwaysApply: true
+---
+
+# Sealos API 查源码，不猜
+
+Helios 只消费 Sealos 已有能力。Host、路径、鉴权头、请求体、错误码、字段名
+都以 [labring/sealos](https://github.com/labring/sealos) 的实现为准，不要凭
+记忆、文档或「更干净的设计」另造一套协议。
+
+## 动手前
+
+1. 确认 `dev-assets/sealos` 存在且能搜到代码（该目录 gitignore，不入库）。
+2. 没有就 clone：
+
+```bash
+mkdir -p dev-assets
+git clone --filter=blob:none --sparse --depth 1 \
+  https://github.com/labring/sealos.git dev-assets/sealos
+```
+
+然后按功能 `git sparse-checkout add` 对应前端/服务（例如
+`frontend/providers/applaunchpad`、`frontend/desktop`、aiproxy 相关目录）。
+不知道归属时先搜关键词，再补 checkout，不要为了一次查询拉全仓历史。
+
+3. 在源码里定位真实调用：region 怎么拼 host、用 kubeconfig 还是
+   `app_token`、BFF 的 `{ code, message, data }` 还是 k8s 直读。
+4. Helios 主进程按同一口径实现；UI 只展示，不发明字段。
+
+## 反例
+
+```ts
+// 错：凭印象写监控 URL
+fetch(`https://api.${region}/monitor?app=${name}`)
+
+// 对：从 applaunchpad 前端抄到的公开 API
+fetch(`https://applaunchpad.${region}/api/monitor/getMonitorData`, { ... })
+```

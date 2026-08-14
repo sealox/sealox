@@ -48,14 +48,15 @@
   链接并复制，`/WorkspaceInvite/?code=` 落地页与 desktop 一致）、重命名
   （仅拥有者）、切换工作空间、新建工作空间、底部 Upgrade 栏（跳 region 的
   费用中心）；  权限门控与 desktop 相同（邀请需拥有者/管理员）。主导航按点击频率分两组：
-  高频组**开始、模板、项目**＋"资源"组**应用、数据库、存储**；"最近"区展示
+  高频组**开始、模板、项目**＋"资源"组**应用、数据库、存储、AI Proxy**；"最近"区展示
   最新项目；底部工作空间配额卡（CPU/内存/存储/GPU 的 used/limit，直读 namespace 的
   ResourceQuota——与 costcenter usage 接口同源，随资源快照 15s 轮询刷新）；
   头像入口进**用户信息**，右下角全局刷新。
 - **开始**（默认页）：白底＋logo 淡金日光背景（Sealos 中性调性，金色只做
-  点缀）+ 居中部署输入框（标题"今天想开发点什么？"，拖入文件夹/粘贴 git
-  地址，M2 接线）＋模板建议 chips，布局即 Lovable 的 prompt hero。右下角常驻
-  "Hi · Follow me on X" 胶囊（X logo，点击外部浏览器打开 x.com/norberia_cz）。
+  点缀）+ 居中输入框（标题"今天想开发点什么？"）已接到本地 eve：发送后流式
+  显示模型回复。拖入文件夹 / 粘贴 git / 真正部署仍是 M2。模板建议 chips 只
+  填输入框。右下角常驻 "Hi · Follow me on X" 胶囊（X logo，点击外部浏览器
+  打开 x.com/norberia_cz）。
 - **项目**：项目 = 模板实例（namespace 里的 `instances.app.sealos.io` CR，
   与 Template 前端同源直读，不再依赖 template.{region} 服务），由多个组件
   （应用、数据库、存储桶）构成，归属由 `cloud.sealos.io/deploy-on-sealos`
@@ -104,7 +105,8 @@
   - 用量概览：近 7 天请求数/Tokens/花费/异常统计条 + 请求数/花费按天曲线
     （`/api/user/dashboard?type=week`）；
   - API Keys：行内创建（创建后金色高亮一次性提示复制）、sk- 打码展示/复制
-    全文、启用/禁用、行内二次确认删除（`/api/user/token*`）；
+    全文、启用/禁用、行内二次确认删除（`/api/user/token*`）。Helios 自己
+    还会确保一把名为 `helios` 的 Key 给本地 eve 用（见架构）。
   - 模型目录：搜索 + 厂商过滤 chips，类型/RPM/输入输出价（原始 /1K 换算
     /1M 展示）（`/api/models/enabled`）。
   - 数据源：aiproxy-web.{region} 的用户侧 BFF，鉴权用 desktop 应用会话
@@ -119,20 +121,31 @@
 
 ## 非目标（v1 明确不做）
 
-- 多项目管理面板、成本、监控图表
-- 区域切换、团队协作（工作空间切换已在 v1 落地）
+- 多项目管理面板、独立成本中心、区域切换
+- 团队协作（工作空间切换已在 v1 落地）
 - Web 版、移动端
-- 自建后端服务和自建数据库
+- 自建云端后端和自建数据库（本地 eve 是桌面进程，不是云服务）
 
 ## 架构（已定的部分）
 
 - **仓库结构**：npm workspaces monorepo，两个 app——`apps/electron`（桌面端）
-  和 `apps/eve`（本地 agent 服务，`npx eve init` 脚手架已就位，M2 填充部署
-  逻辑）。
-- **Electron**：唯一客户端。UI 栈：electron-vite + React + TypeScript
-  （eve 的前端客户端是 React hook，M2 直接可用）；浅色主题。
-- **Vercel eve（本地运行）**：agent 运行时在用户本机作为 app 的后台 AI 服务
-  运行，部署逻辑从 use-sealos skill 移植。
+  和 `apps/eve`（本地 agent 服务）。eve 已作为后台 AI 跑通首页对话；部署
+  决策树仍待 M2 从 use-sealos skill 移植。
+- **Electron**：唯一客户端。UI 栈：electron-vite + React + TypeScript；浅色
+  主题。渲染进程不直连 eve（开发态跨端口 CORS、打包后 `file://` 同源都过不
+  去）：主进程 HTTP 调 eve，对话经 IPC 流到首页。
+- **Vercel eve（本地运行）**：登录后主进程在后台拉起
+  `eve dev --no-ui --host 127.0.0.1 --port 24721`，退出/登出杀掉，切换工作
+  空间则换凭证重启。路由走 eve 默认 HTTP（`POST /eve/v1/session`、
+  `GET /eve/v1/session/:id/stream`）。当前切片关掉了 bash/文件/联网等内置
+  工具，只对话。
+- **模型凭证**：不走 Vercel AI Gateway。主进程向当前工作空间的 AI Proxy 确
+  保一把名为 `helios` 的 Key（没有就创建，停用就打开），密钥只进 eve 子进
+  程环境变量（`HELIOS_AI_BASE_URL` / `HELIOS_AI_KEY` / `HELIOS_AI_MODEL`），
+  不进渲染进程。模型按该区域 `/api/models/enabled` 选择：聊天模型里优先
+  DeepSeek Flash（id 或厂商含 `deepseek` 且含 `flash`，`deepseek-v4-flash` /
+  `deepseek-flash` 优先），没有则回退 `gemini-3.5-flash`。eve 用
+  `@ai-sdk/openai-compatible` 直连 `https://aiproxy.{region}/v1`。
 - **Sealos**：零改动，只消费现有 API。
 - **品牌**：logo 采用 Sealos 官方 mark 的金色重配色，源资产在根 `assets/`
   （blackgold 黑底、whitegold 白底两版）。侧边栏用无底纯金标
@@ -140,8 +153,8 @@
   加载页用 `logo.svg`；应用图标用 whitegold（与侧边栏同一套金，dock 与应用内
   观感一致）——dev 下主进程 `app.dock.setIcon(resources/icon.png)`，打包由
   electron-builder 从 `build/icon.png` 生成。
-- 数据流：部署动作走 Electron → 本地 eve agent → Sealos；资源展示走
-  Electron → Sealos API 直连。
+- 数据流：对话 / 部署动作走 Electron 主进程 → 本地 eve → Sealos AI Proxy
+  （模型）或 Sealos API（部署，M2）；资源展示走 Electron → Sealos API 直连。
 
 ## 工程约定
 
@@ -177,21 +190,21 @@
 - eve 文档：以安装后的 `node_modules/eve/docs/` 为准（README 有阅读顺序），
   脚手架 `npx eve init`；线上文档 <https://eve.dev/docs>
 
-## 未决问题（开工前逐个确认）
+## 未决问题
 
-1. Electron 与本地 eve 的通信方式和进程托管细节：eve 自带 CLI
-   （`init/dev/build/start`）和前端客户端，具体以安装版本的
-   `node_modules/eve/docs/` 为准（M2 开工时确认）。
-2. 本地 eve 的模型凭证：走 Vercel AI Gateway 还是直连模型厂商；key 的来源
-   与存放（M2 开工时确认）。
-3. 源码构建依赖：v1 是否要求用户本机有 docker；没有 docker 时的降级方案。
-4. 日志"实时"的实现程度：轮询还是 watch（M3 确认）。
+1. 源码构建依赖：v1 是否要求用户本机有 docker；没有 docker 时的降级方案。
+2. 日志"实时"的实现程度：轮询还是 watch（M3 确认）。
+3. 打包后的 eve：当前 dev 用 `eve dev`（`localDev()` 鉴权）。dmg 需改为
+   `eve build` + `eve start`，并换掉 `placeholderAuth`（例如主进程与 eve
+   共享 jwtHmac / httpBasic）。
 
 ## 里程碑
 
-1. **M1 只读链路**（已完成，2026-08-13）：Electron 壳 + 登录 + 侧边栏四页
-   只读资源展示；真实账号验证通过（device flow 登录路径待端到端验证）。
-2. **M2 部署链路**：按难度递增接入三条路径——模板店 → 官方镜像 → 源码构建。
+1. **M1 只读链路**（已完成，2026-08-13）：Electron 壳 + 登录 + 侧边栏资源
+   展示；之后补了项目/应用详情、工作空间面板、AI Proxy 页。
+2. **M2 部署链路**（进行中，2026-08-14）：本地 eve 已作为后台 AI 服务，首页
+   能收到模型回复。待按难度递增接三条部署路径——模板店 → 官方镜像 → 源码
+   构建。
 3. **M3 体验闭环**：实时进度流、失败诊断、整体删除。
 4. **M4 交付**：打包 dmg，准备与 Sealos 控制台的对比演示。
 
