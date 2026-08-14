@@ -398,6 +398,18 @@ export interface RegionOption {
   label: string
 }
 
+export type AgentRuntimeState = 'stopped' | 'starting' | 'ready' | 'error'
+
+export interface AgentStatus {
+  state: AgentRuntimeState
+  detail?: string
+}
+
+export type ChatEvent =
+  | { type: 'delta'; text: string }
+  | { type: 'done' }
+  | { type: 'error'; message: string }
+
 export interface HeliosApi {
   getStatus(): Promise<SealosStatus>
   getRegions(): Promise<RegionOption[]>
@@ -423,5 +435,9 @@ export interface HeliosApi {
   getInviteLink(uid: string, role: 'manager' | 'developer'): Promise<string>
   openExternal(url: string): Promise<void>
   copyText(text: string): Promise<void>
+  getAgentStatus(): Promise<AgentStatus>
+  sendHomeMessage(text: string): Promise<void>
   onLoginEvent(listener: (event: LoginEvent) => void): () => void
+  onAgentStatus(listener: (status: AgentStatus) => void): () => void
+  onChatEvent(listener: (event: ChatEvent) => void): () => void
 }

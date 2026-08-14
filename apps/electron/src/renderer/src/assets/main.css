@@ -732,6 +732,56 @@
   cursor: pointer;
 }
 
+.hero.has-chat .hero-spacer-top {
+  flex: 0.4;
+}
+
+.hero.has-chat .hero-spacer-bottom {
+  flex: 0.6;
+}
+
+.chat-log {
+  width: 100%;
+  max-width: 672px;
+  max-height: 42vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 4px 4px 8px;
+}
+
+.chat-msg {
+  max-width: 92%;
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-size: 15px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.chat-msg.user {
+  align-self: flex-end;
+  background: var(--text-primary);
+  color: #fff;
+  border-bottom-right-radius: 6px;
+}
+
+.chat-msg.assistant {
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+  color: var(--text-primary);
+  border-bottom-left-radius: 6px;
+}
+
+.chat-msg.assistant.error {
+  color: var(--failed);
+}
+
 .prompt-notice {
   margin-top: 12px;
   padding: 8px 14px;
@@ -740,6 +790,10 @@
   box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1);
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+.prompt-notice.error {
+  color: var(--failed);
 }
 
 /* 建议 chips */

@@ -1,10 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
+  AgentStatus,
   AiKeyInfo,
   AiProxyOverview,
   AppDetail,
   AppMonitor,
+  ChatEvent,
   HeliosApi,
   LoginEvent,
   ProjectDetail,
@@ -53,10 +55,22 @@ const helios: HeliosApi = {
     ipcRenderer.invoke('sealos:workspace-invite', uid, role),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('sealos:open-external', url),
   copyText: (text: string): Promise<void> => ipcRenderer.invoke('helios:copy-text', text),
+  getAgentStatus: (): Promise<AgentStatus> => ipcRenderer.invoke('helios:agent-status'),
+  sendHomeMessage: (text: string): Promise<void> => ipcRenderer.invoke('helios:chat-send', text),
   onLoginEvent: (listener: (event: LoginEvent) => void): (() => void) => {
     const wrapped = (_: Electron.IpcRendererEvent, event: LoginEvent): void => listener(event)
     ipcRenderer.on('sealos:login-event', wrapped)
     return () => ipcRenderer.removeListener('sealos:login-event', wrapped)
+  },
+  onAgentStatus: (listener: (status: AgentStatus) => void): (() => void) => {
+    const wrapped = (_: Electron.IpcRendererEvent, event: AgentStatus): void => listener(event)
+    ipcRenderer.on('helios:agent-status', wrapped)
+    return () => ipcRenderer.removeListener('helios:agent-status', wrapped)
+  },
+  onChatEvent: (listener: (event: ChatEvent) => void): (() => void) => {
+    const wrapped = (_: Electron.IpcRendererEvent, event: ChatEvent): void => listener(event)
+    ipcRenderer.on('helios:chat-event', wrapped)
+    return () => ipcRenderer.removeListener('helios:chat-event', wrapped)
   }
 }
 

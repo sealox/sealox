@@ -210,3 +210,68 @@ export async function setAiKeyEnabled(id: number, enabled: boolean): Promise<voi
 export async function deleteAiKey(id: number): Promise<void> {
   await bffRequest(`/api/user/token/${id}`, { method: 'DELETE' })
 }
+
+/** Helios 注入给本地 eve 的专用 Key 名。 */
+export const HELIOS_KEY_NAME = 'helios'
+export const HELIOS_FALLBACK_MODEL = 'gemini-3.5-flash'
+
+export interface HeliosAiCredential {
+  endpoint: string
+  /** 已带 sk- 前缀，可直接当 Bearer */
+  apiKey: string
+  /** 目录里优先 DeepSeek Flash，没有则回退 Gemini 3.5 Flash */
+  model: string
+}
+
+function isChatModel(model: AiModelInfo): boolean {
+  return model.type === 1 && Boolean(model.model)
+}
+
+function pickHeliosModel(models: AiModelInfo[]): string {
+  const chat = models.filter(isChatModel)
+  const deepseekFlash = chat
+    .filter((item) => {
+      const id = item.model.toLowerCase()
+      const owner = item.owner.toLowerCase()
+      return (id.includes('deepseek') || owner.includes('deepseek')) && id.includes('flash')
+    })
+    .sort((a, b) => {
+      const rank = (id: string): number => {
+        const n = id.toLowerCase()
+        if (n === 'deepseek-v4-flash' || n === 'deepseek-flash') return 0
+        return 1
+      }
+      return rank(a.model) - rank(b.model) || a.model.localeCompare(b.model)
+    })[0]
+  if (deepseekFlash) return deepseekFlash.model
+
+  const gemini =
+    chat.find((item) => item.model === HELIOS_FALLBACK_MODEL) ??
+    chat.find((item) => {
+      const id = item.model.toLowerCase()
+      return id.includes('gemini') && id.includes('flash') && (id.includes('3.5') || id.includes('3-5'))
+    })
+  return gemini?.model ?? HELIOS_FALLBACK_MODEL
+}
+
+/**
+ * 当前工作空间里必须有一把名为 helios 的启用 Key。
+ * 没有就创建，停用就重新打开。密钥只给主进程，不进渲染进程。
+ * 模型按当前区域目录选择：DeepSeek Flash 优先，否则 Gemini 3.5 Flash。
+ */
+export async function ensureHeliosKey(): Promise<HeliosAiCredential> {
+  const overview = await fetchAiProxyOverview()
+  let key = overview.keys.find((item) => item.name === HELIOS_KEY_NAME)
+  if (!key) {
+    key = await createAiKey(HELIOS_KEY_NAME)
+  } else if (!key.enabled) {
+    await setAiKeyEnabled(key.id, true)
+  }
+  const raw = key.key.trim()
+  if (!raw) throw new Error('helios Key 没有返回密钥，请在 AI Proxy 页重新创建')
+  return {
+    endpoint: overview.endpoint,
+    apiKey: raw.startsWith('sk-') ? raw : `sk-${raw}`,
+    model: pickHeliosModel(overview.models)
+  }
+}

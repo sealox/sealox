@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import type { LoginEvent } from '../shared/types'
+import { getAgentStatus, restartAgent, sendHomeMessage, startAgent, stopAgent } from './agent/runtime'
 import {
   cancelLogin,
   getStatus,
@@ -72,12 +73,20 @@ function registerIpc(): void {
       if (loginEvent.type === 'device_code' && loginEvent.verificationUrl) {
         void shell.openExternal(loginEvent.verificationUrl)
       }
+      if (loginEvent.type === 'success') void startAgent()
     })
   })
 
   ipcMain.handle('sealos:login-cancel', () => cancelLogin())
-  ipcMain.handle('sealos:save-kubeconfig', (_event, text: string) => saveKubeconfigText(text))
-  ipcMain.handle('sealos:logout', () => logout())
+  ipcMain.handle('sealos:save-kubeconfig', async (_event, text: string) => {
+    const status = await saveKubeconfigText(text)
+    void startAgent()
+    return status
+  })
+  ipcMain.handle('sealos:logout', async () => {
+    await stopAgent()
+    await logout()
+  })
   ipcMain.handle('sealos:resources', () => fetchResources())
   ipcMain.handle('sealos:app-detail', (_event, name: string, kind: 'Deployment' | 'StatefulSet') =>
     fetchAppDetail(name, kind)
@@ -95,7 +104,11 @@ function registerIpc(): void {
   ipcMain.handle('sealos:aiproxy-delete-key', (_event, id: number) => deleteAiKey(id))
   ipcMain.handle('sealos:templates', () => fetchTemplates())
   ipcMain.handle('sealos:workspaces', () => listWorkspaces())
-  ipcMain.handle('sealos:workspace-switch', (_event, uid: string) => switchWorkspace(uid))
+  ipcMain.handle('sealos:workspace-switch', async (_event, uid: string) => {
+    const status = await switchWorkspace(uid)
+    void restartAgent()
+    return status
+  })
   ipcMain.handle('sealos:workspace-details', (_event, uid: string) => getWorkspaceDetails(uid))
   ipcMain.handle('sealos:workspace-rename', (_event, uid: string, teamName: string) =>
     renameWorkspace(uid, teamName)
@@ -114,6 +127,8 @@ function registerIpc(): void {
   ipcMain.handle('helios:copy-text', (_event, text: string) => {
     clipboard.writeText(text)
   })
+  ipcMain.handle('helios:agent-status', () => getAgentStatus())
+  ipcMain.handle('helios:chat-send', (_event, text: string) => sendHomeMessage(text))
 }
 
 app.whenReady().then(() => {
@@ -130,10 +145,15 @@ app.whenReady().then(() => {
 
   registerIpc()
   createWindow()
+  if (getStatus().authenticated) void startAgent()
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+app.on('before-quit', () => {
+  void stopAgent()
 })
 
 app.on('window-all-closed', () => {

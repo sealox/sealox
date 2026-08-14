@@ -6,9 +6,11 @@ import ProjectDetailView from './ProjectDetailView'
 import TemplatesTab from './TemplatesTab'
 import WorkspacePanel from './WorkspacePanel'
 import type {
+  AgentStatus,
   AppStatus,
   AppWorkload,
   BucketInfo,
+  ChatEvent,
   DatabaseInfo,
   ProjectInfo,
   ResourceSnapshot,
@@ -453,10 +455,61 @@ const PROMPT_SUGGESTIONS: Array<{ label: string; icon: React.JSX.Element }> = [
   { label: 'MinIO', icon: <BucketIcon size={16} /> }
 ]
 
+interface ChatMessage {
+  role: 'user' | 'assistant'
+  text: string
+  pending?: boolean
+  error?: string
+}
+
 function HomeHero(): React.JSX.Element {
   const [text, setText] = useState('')
-  const [notice, setNotice] = useState(false)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [busy, setBusy] = useState(false)
+  const [agent, setAgent] = useState<AgentStatus>({ state: 'stopped' })
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const logRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    void window.helios.getAgentStatus().then(setAgent)
+    return window.helios.onAgentStatus(setAgent)
+  }, [])
+
+  useEffect(() => {
+    return window.helios.onChatEvent((event: ChatEvent) => {
+      if (event.type === 'delta') {
+        setMessages((prev) => {
+          const next = [...prev]
+          const last = next[next.length - 1]
+          if (last?.role !== 'assistant') return prev
+          next[next.length - 1] = { ...last, text: event.text, pending: true, error: undefined }
+          return next
+        })
+        return
+      }
+      if (event.type === 'done') {
+        setMessages((prev) => {
+          const next = [...prev]
+          const last = next[next.length - 1]
+          if (last?.role !== 'assistant') return prev
+          next[next.length - 1] = { ...last, pending: false }
+          return next
+        })
+        return
+      }
+      setMessages((prev) => {
+        const next = [...prev]
+        const last = next[next.length - 1]
+        if (last?.role !== 'assistant') return prev
+        next[next.length - 1] = { ...last, pending: false, error: event.message }
+        return next
+      })
+    })
+  }, [])
+
+  useEffect(() => {
+    logRef.current?.scrollTo({ top: logRef.current.scrollHeight })
+  }, [messages])
 
   const autosize = useCallback(() => {
     const el = textareaRef.current
@@ -466,24 +519,65 @@ function HomeHero(): React.JSX.Element {
   }, [])
 
   const submit = useCallback(() => {
-    if (!text.trim()) return
-    setNotice(true)
-  }, [text])
+    const value = text.trim()
+    if (!value || busy) return
+    setText('')
+    setBusy(true)
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', text: value },
+      { role: 'assistant', text: '', pending: true }
+    ])
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (!el) return
+      el.style.height = 'auto'
+    })
+    void window.helios.sendHomeMessage(value).then(
+      () => setBusy(false),
+      (err: unknown) => {
+        setBusy(false)
+        const message = err instanceof Error ? err.message : String(err)
+        setMessages((prev) => {
+          const next = [...prev]
+          const last = next[next.length - 1]
+          if (last?.role !== 'assistant' || last.error) return prev
+          next[next.length - 1] = { ...last, pending: false, error: message }
+          return next
+        })
+      }
+    )
+  }, [text, busy])
+
+  const chatting = messages.length > 0
+  const canSend = Boolean(text.trim()) && !busy && agent.state === 'ready'
 
   return (
-    <div className="hero">
+    <div className={`hero${chatting ? ' has-chat' : ''}`}>
       <div className="hero-spacer-top" />
       <div className="hero-main">
-        <h1>今天想开发点什么？</h1>
+        {!chatting && <h1>今天想开发点什么？</h1>}
+        {chatting && (
+          <div className="chat-log" ref={logRef}>
+            {messages.map((msg, index) => (
+              <div
+                key={`${msg.role}-${index}`}
+                className={`chat-msg ${msg.role}${msg.error ? ' error' : ''}`}
+              >
+                {msg.error ? msg.error : msg.text || (msg.pending ? '…' : '')}
+              </div>
+            ))}
+          </div>
+        )}
         <div className="prompt-card">
           <textarea
             ref={textareaRef}
             rows={1}
             value={text}
-            placeholder="把项目文件夹拖进来，或粘贴 Git 仓库地址…"
+            placeholder={chatting ? '继续说…' : '把项目文件夹拖进来，或粘贴 Git 仓库地址…'}
+            disabled={busy}
             onChange={(e) => {
               setText(e.target.value)
-              setNotice(false)
               autosize()
             }}
             onKeyDown={(e) => {
@@ -498,30 +592,38 @@ function HomeHero(): React.JSX.Element {
               <PlusIcon size={16} />
             </button>
             <button
-              className={`send-btn${text.trim() ? ' ready' : ''}`}
-              title="开始部署"
+              className={`send-btn${canSend ? ' ready' : ''}`}
+              title="发送"
               onClick={submit}
+              disabled={!canSend}
             >
               <ArrowUpIcon size={16} />
             </button>
           </div>
         </div>
-        {notice && <div className="prompt-notice">部署链路在 M2 接入，当前版本先看清资源。</div>}
-        <div className="chips">
-          {PROMPT_SUGGESTIONS.map((s) => (
-            <button
-              key={s.label}
-              onClick={() => {
-                setText(`部署一个 ${s.label}`)
-                setNotice(false)
-                textareaRef.current?.focus()
-              }}
-            >
-              {s.icon}
-              {s.label}
-            </button>
-          ))}
-        </div>
+        {agent.state !== 'ready' && (
+          <div className={`prompt-notice${agent.state === 'error' ? ' error' : ''}`}>
+            {agent.state === 'starting' || agent.state === 'stopped'
+              ? (agent.detail ?? '正在启动 AI 服务…')
+              : (agent.detail ?? 'AI 服务不可用')}
+          </div>
+        )}
+        {!chatting && (
+          <div className="chips">
+            {PROMPT_SUGGESTIONS.map((s) => (
+              <button
+                key={s.label}
+                onClick={() => {
+                  setText(`部署一个 ${s.label}`)
+                  textareaRef.current?.focus()
+                }}
+              >
+                {s.icon}
+                {s.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div className="hero-spacer-bottom" />
     </div>
