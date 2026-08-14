@@ -1,6 +1,6 @@
 {
   "name": "@helios/electron",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Helios desktop app — deploy to Sealos, agent-first.",
   "main": "./out/main/index.js",
   "author": "che",

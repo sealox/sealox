@@ -1,6 +1,6 @@
 {
   "name": "helios",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Deploy to Sealos from a desktop app — agent-first.",
   "workspaces": [
