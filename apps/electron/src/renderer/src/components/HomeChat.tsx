@@ -102,6 +102,14 @@ function CopyIcon({ size }: IconProps): React.JSX.Element {
   )
 }
 
+function XLogoIcon({ size }: IconProps): React.JSX.Element {
+  return (
+    <svg width={size ?? 16} height={size ?? 16} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z" />
+    </svg>
+  )
+}
+
 function WorkflowIcon({ size }: IconProps): React.JSX.Element {
   return (
     <svg {...iconAttrs(size)}>
@@ -700,6 +708,17 @@ export default function HomeChat({ workspaceId, insetLeft }: Props): React.JSX.E
         )}
       </div>
       <div className="hero-spacer-bottom" />
+      {!chatting ? (
+        <button
+          className="announce announce-corner"
+          title="在 X 上关注我"
+          onClick={() => void window.helios.openExternal('https://x.com/norberia_cz')}
+        >
+          <span className="announce-badge">Hi</span>
+          <span>Follow me on X</span>
+          <XLogoIcon size={15} />
+        </button>
+      ) : null}
     </div>
   )
 }

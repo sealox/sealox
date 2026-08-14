@@ -644,7 +644,7 @@
   background: rgba(255, 255, 255, 0.7);
 }
 
-/* 右下角常驻的 Follow 胶囊 */
+/* 空会话时右下角的 Follow 胶囊；开聊后不渲染 */
 .announce-corner {
   position: absolute;
   right: 24px;
