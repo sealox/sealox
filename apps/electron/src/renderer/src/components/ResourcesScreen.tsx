@@ -151,15 +151,6 @@ function ChevronDownIcon({ size }: IconProps): React.JSX.Element {
   )
 }
 
-function RefreshIcon({ size }: IconProps): React.JSX.Element {
-  return (
-    <svg {...iconAttrs(size)}>
-      <path d="M20 12a8 8 0 1 1-2.34-5.66" />
-      <path d="M20 4v4.5h-4.5" />
-    </svg>
-  )
-}
-
 function PanelIcon({ size }: IconProps): React.JSX.Element {
   return (
     <svg {...iconAttrs(size)}>
@@ -882,7 +873,7 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
   const [collapsed, setCollapsed] = useState(false)
   const [snapshot, setSnapshot] = useState<ResourceSnapshot | null>(null)
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [appVersion, setAppVersion] = useState('')
   const [wsOpen, setWsOpen] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
@@ -946,7 +937,6 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
   )
 
   const refresh = useCallback(() => {
-    setLoading(true)
     window.helios
       .getResources()
       .then((snap) => {
@@ -956,7 +946,6 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
       .catch((err: unknown) => {
         setError(errMsg(err))
       })
-      .finally(() => setLoading(false))
   }, [])
 
   const selectionScope = `${tab}:${status.workspace ?? ''}:${status.namespace ?? ''}`
@@ -1235,6 +1224,10 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
     }
   }, [refresh])
 
+  useEffect(() => {
+    void window.helios.getAppVersion().then(setAppVersion)
+  }, [])
+
   const workspaceId = status.workspace ?? status.namespace ?? ''
   const activeDraft = chatDraft?.workspace === workspaceId ? chatDraft : null
   const workspaceLabel = status.workspaceName ?? status.workspace ?? 'Sealos 工作空间'
@@ -1378,14 +1371,11 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
                 >
                   <span className="avatar-dot">{avatarLetter}</span>
                 </button>
-                <button
-                  className={`icon-btn${loading ? ' loading' : ''}`}
-                  title="刷新资源"
-                  disabled={loading}
-                  onClick={refresh}
-                >
-                  <RefreshIcon />
-                </button>
+                {appVersion ? (
+                  <span className="sidebar-version" title={`Helios ${appVersion}`}>
+                    {appVersion}
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>

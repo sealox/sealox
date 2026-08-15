@@ -474,6 +474,13 @@
   height: 32px;
 }
 
+.sidebar-version {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
 .avatar-btn {
   width: 32px;
   height: 32px;

@@ -601,6 +601,7 @@ export type ChatEvent =
   | { type: 'index'; workspaceId: string; items: ChatListItem[] }
 
 export interface HeliosApi {
+  getAppVersion(): Promise<string>
   getStatus(): Promise<SealosStatus>
   getRegions(): Promise<RegionOption[]>
   startLogin(region?: string): Promise<void>

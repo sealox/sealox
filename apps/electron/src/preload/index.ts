@@ -28,6 +28,7 @@ import type {
 } from '../shared/types'
 
 const helios: HeliosApi = {
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke('helios:app-version'),
   getStatus: (): Promise<SealosStatus> => ipcRenderer.invoke('sealos:status'),
   getRegions: (): Promise<RegionOption[]> => ipcRenderer.invoke('sealos:regions'),
   startLogin: (region?: string): Promise<void> => ipcRenderer.invoke('sealos:login-start', region),

@@ -93,6 +93,7 @@ function createWindow(): BrowserWindow {
 }
 
 function registerIpc(): void {
+  ipcMain.handle('helios:app-version', () => app.getVersion())
   ipcMain.handle('sealos:status', () => getStatus())
   ipcMain.handle('sealos:regions', () => KNOWN_REGIONS)
 
