@@ -149,6 +149,7 @@ export interface KubeBlocksCluster {
     componentSpecs?: Array<{
       resources?: { limits?: { cpu?: string; memory?: string } }
       volumeClaimTemplates?: Array<{
+        metadata?: { name?: string }
         spec?: { resources?: { requests?: { storage?: string } } }
       }>
     }>

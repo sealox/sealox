@@ -1,6 +1,6 @@
 {
   "name": "@helios/electron",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Helios desktop app — deploy to Sealos, agent-first.",
   "main": "./out/main/index.js",
   "author": "che",
@@ -32,6 +32,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "@xyflow/react": "^12.11.3",
     "electron": "39.8.10",
     "electron-builder": "^26.0.12",
     "electron-vite": "^5.0.0",

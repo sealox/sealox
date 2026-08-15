@@ -41,6 +41,8 @@ export interface AppWorkload {
   /** 是否带 cloud.sealos.io/app-deploy-manager 标签（App Launchpad 管理的应用） */
   launchpad: boolean
   pods: PodInfo[]
+  /** 项目详情拓扑页脚：PVC / volumeClaimTemplates，列表快照不填 */
+  volume?: VolumeHint
 }
 
 export interface DatabaseInfo {
@@ -168,6 +170,12 @@ export interface StoreMount {
   size?: string
 }
 
+/** 拓扑节点页脚的持久卷（PVC / volumeClaimTemplates / 库 storage） */
+export interface VolumeHint {
+  name: string
+  size?: string
+}
+
 export interface HpaInfo {
   /** cpu | memory | gpu */
   target: string
@@ -240,10 +248,18 @@ export interface OtherResource {
   note?: string
 }
 
+/** 应用 → 数据库 / 对象存储。只表示已证实（或单应用回退）的引用，不含明文 */
+export interface ProjectLink {
+  app: string
+  targetKind: 'database' | 'bucket'
+  target: string
+}
+
 export interface DatabaseDetail extends DatabaseInfo {
   cpuLimit?: string
   memoryLimit?: string
   storage?: string
+  volume?: VolumeHint
   /** 连接凭证所在 secret 名（不含明文） */
   connSecret?: string
   createdAt?: string
@@ -267,6 +283,8 @@ export interface ProjectDetail {
   buckets: BucketInfo[]
   cronjobs: CronJobInfo[]
   others: OtherResource[]
+  /** 拓扑边。没有就不画，渲染进程不要自己猜 */
+  links: ProjectLink[]
   fetchedAt: string
 }
 

@@ -41,6 +41,7 @@ import {
   type InstanceCR,
   type KubeBlocksCluster
 } from './resources'
+import { inferProjectLinks } from './topology'
 
 /** applaunchpad 的 HPA/暂停/镜像注解约定 */
 const PAUSE_KEY = 'deploy.cloud.sealos.io/pause'
@@ -509,11 +510,15 @@ export async function fetchPodLogs(
 
 function databaseDetail(cluster: KubeBlocksCluster): DatabaseDetail {
   const component = cluster.spec?.componentSpecs?.[0]
+  const volumeClaim = component?.volumeClaimTemplates?.[0]
+  const storage = volumeClaim?.spec?.resources?.requests?.storage
+  const volumeName = volumeClaim?.metadata?.name
   return {
     ...databaseFromCluster(cluster),
     cpuLimit: component?.resources?.limits?.cpu,
     memoryLimit: component?.resources?.limits?.memory,
-    storage: component?.volumeClaimTemplates?.[0]?.spec?.resources?.requests?.storage,
+    storage,
+    volume: storage || volumeName ? { name: volumeName ?? 'data', size: storage } : undefined,
     connSecret: cluster.metadata?.name ? `${cluster.metadata.name}-conn-credential` : undefined,
     createdAt: cluster.metadata?.creationTimestamp
   }
@@ -621,12 +626,29 @@ export async function fetchProjectDetail(name: string): Promise<ProjectDetail> {
   const podItems = pods.items ?? []
   const ingressItems = ingresses.items ?? []
 
+  const rawByName = new Map<string, V1Deployment | V1StatefulSet>()
+  for (const deploy of deployments.items ?? []) {
+    const deployName = deploy.metadata?.name
+    if (deployName) rawByName.set(deployName, deploy)
+  }
+  for (const sts of statefulSets.items ?? []) {
+    if (sts.metadata?.labels?.['app.kubernetes.io/managed-by'] === 'kubeblocks') continue
+    const stsName = sts.metadata?.name
+    if (stsName) rawByName.set(stsName, sts)
+  }
+
   const workloads = [
     ...(deployments.items ?? []).map((d) => workloadFromDeployment(d, podItems, ingressItems)),
     ...(statefulSets.items ?? [])
       .map((s) => workloadFromStatefulSet(s, podItems, ingressItems))
       .filter((w): w is NonNullable<typeof w> => w !== null)
-  ].sort((a, b) => a.name.localeCompare(b.name))
+  ]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((workload) => {
+      const raw = rawByName.get(workload.name)
+      const first = raw ? storeMounts(raw)[0] : undefined
+      return first ? { ...workload, volume: { name: first.name, size: first.size } } : workload
+    })
 
   const cronjobInfos: CronJobInfo[] = (cronjobs.items ?? []).map((job) => ({
     name: job.metadata?.name ?? '',
@@ -667,6 +689,21 @@ export async function fetchProjectDetail(name: string): Promise<ProjectDetail> {
   pushAll('Certificate', certificates)
   pushAll('App', appCRs, () => '桌面入口')
 
+  const databaseDetails = ((clusters ?? []) as KubeBlocksCluster[]).map(databaseDetail)
+  const bucketInfos = (
+    buckets as Array<{
+      metadata?: { name?: string; labels?: Record<string, string>; creationTimestamp?: string }
+      spec?: { policy?: string }
+      status?: { name?: string }
+    }>
+  ).map((bucket) => ({
+    name: bucket.metadata?.name ?? '',
+    policy: bucket.spec?.policy,
+    bucketName: bucket.status?.name,
+    createdAt: bucket.metadata?.creationTimestamp,
+    project: bucket.metadata?.labels?.[PROJECT_LABEL]
+  }))
+
   return {
     name,
     displayName: instance ? instanceDisplayName(instance) : undefined,
@@ -678,22 +715,16 @@ export async function fetchProjectDetail(name: string): Promise<ProjectDetail> {
     website: instance?.spec?.url,
     createdAt: instance?.metadata?.creationTimestamp,
     apps: workloads,
-    databases: ((clusters ?? []) as KubeBlocksCluster[]).map(databaseDetail),
-    buckets: (
-      buckets as Array<{
-        metadata?: { name?: string; labels?: Record<string, string>; creationTimestamp?: string }
-        spec?: { policy?: string }
-        status?: { name?: string }
-      }>
-    ).map((bucket) => ({
-      name: bucket.metadata?.name ?? '',
-      policy: bucket.spec?.policy,
-      bucketName: bucket.status?.name,
-      createdAt: bucket.metadata?.creationTimestamp,
-      project: bucket.metadata?.labels?.[PROJECT_LABEL]
-    })),
+    databases: databaseDetails,
+    buckets: bucketInfos,
     cronjobs: cronjobInfos,
     others,
+    links: inferProjectLinks(
+      workloads.map((app) => app.name),
+      rawByName,
+      databaseDetails,
+      bucketInfos
+    ),
     fetchedAt: new Date().toISOString()
   }
 }

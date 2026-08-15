@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AppStatus, OtherResource, ProjectDetail } from '../../../shared/types'
 import { DetailCrumbs, type Crumb } from './AppDetailView'
 import {
-  ChevronRightIcon,
-  CopyValue,
   EmptyNote,
   GithubIcon,
   GlobeIcon,
@@ -12,22 +10,10 @@ import {
   Section,
   StatStrip
 } from './detailParts'
-import {
-  STATUS_LABEL,
-  dbPhaseToStatus,
-  formatCpu,
-  openUrl,
-  statusDotClass,
-  timeAgo
-} from './detailUtils'
+import { STATUS_LABEL, dbPhaseToStatus, openUrl, statusDotClass, timeAgo } from './detailUtils'
+import ProjectTopology from './ProjectTopology'
 
 const DETAIL_REFRESH_MS = 15_000
-
-const POLICY_LABEL: Record<string, string> = {
-  private: '私有',
-  publicRead: '公开读',
-  publicReadwrite: '公开读写'
-}
 
 interface Props {
   name: string
@@ -310,122 +296,19 @@ function ProjectDetailView({
         </div>
       )}
 
-      {publicUrls.length > 0 && (
-        <Section title="公网入口" count={publicUrls.length}>
-          <div className="url-list">
-            {publicUrls.map((url) => (
-              <a
-                key={url}
-                href="#open"
-                className="url-row"
-                onClick={(e) => {
-                  e.preventDefault()
-                  openUrl(url)
-                }}
-              >
-                <span className="truncate">{url.replace('https://', '')}</span>
-                <OpenIcon size={13} />
-              </a>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      <Section title="应用" count={detail.apps.length}>
-        {detail.apps.length === 0 ? (
-          <EmptyNote text="项目里没有应用工作负载。" />
-        ) : (
-          <div className="comp-list">
-            {detail.apps.map((app) => (
-              <button
-                key={`${app.kind}-${app.name}`}
-                className="comp-row comp-clickable"
-                onClick={() => onOpenApp(app.name, app.kind)}
-              >
-                <span className={statusDotClass(app.status)} />
-                <span className="comp-name truncate" title={app.name}>
-                  {app.name}
-                </span>
-                <span className="chip chip-mini">
-                  {app.kind === 'Deployment' ? '无状态' : '有状态'}
-                </span>
-                <span className="comp-cell">
-                  {app.readyReplicas}/{app.replicas} 副本
-                </span>
-                <span className="comp-cell comp-image mono truncate" title={app.images.join(', ')}>
-                  {app.images[0]?.replace(/^docker\.io\//, '') ?? ''}
-                </span>
-                <span className="comp-cell comp-urls">
-                  {app.urls.length > 0 ? `${app.urls.length} 个域名` : ''}
-                </span>
-                <span className="comp-chevron">
-                  <ChevronRightIcon size={15} />
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </Section>
-
-      <Section title="数据库" count={detail.databases.length}>
-        {detail.databases.length === 0 ? (
-          <EmptyNote text="项目里没有数据库。" />
-        ) : (
-          <div className="comp-list">
-            {detail.databases.map((db) => (
-              <div key={db.name} className="comp-row">
-                <span className={statusDotClass(dbPhaseToStatus(db.phase))} />
-                <span className="comp-name truncate" title={db.name}>
-                  {db.name}
-                </span>
-                {db.engine && (
-                  <span className="chip chip-mini">
-                    {db.engine}
-                    {db.version ? ` ${db.version.replace(`${db.engine}-`, '')}` : ''}
-                  </span>
-                )}
-                <span className="comp-cell">
-                  {[formatCpu(db.cpuLimit), db.memoryLimit, db.storage]
-                    .filter(Boolean)
-                    .join(' / ') || db.phase}
-                </span>
-                <span className="comp-cell comp-conn">
-                  {db.connSecret && (
-                    <CopyValue
-                      text={db.connSecret}
-                      display={`连接凭证 ${db.connSecret}`}
-                      title="连接信息在此 Secret 中（复制名称）"
-                      mono={false}
-                    />
-                  )}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
-
-      {detail.buckets.length > 0 && (
-        <Section title="对象存储" count={detail.buckets.length}>
-          <div className="comp-list">
-            {detail.buckets.map((bucket) => (
-              <div key={bucket.name} className="comp-row">
-                <span className="dot dot-running" />
-                <span className="comp-name truncate" title={bucket.name}>
-                  {bucket.name}
-                </span>
-                {bucket.policy && (
-                  <span className="chip chip-mini">
-                    {POLICY_LABEL[bucket.policy] ?? bucket.policy}
-                  </span>
-                )}
-                <span className="comp-cell">
-                  {bucket.bucketName && <CopyValue text={bucket.bucketName} />}
-                </span>
-              </div>
-            ))}
-          </div>
-        </Section>
+      {detail.apps.length + detail.databases.length + detail.buckets.length > 0 ? (
+        <ProjectTopology
+          key={name}
+          apps={detail.apps}
+          databases={detail.databases}
+          buckets={detail.buckets}
+          links={detail.links ?? []}
+          onOpenApp={onOpenApp}
+        />
+      ) : (
+        <section className="dsection">
+          <EmptyNote text="项目里还没有应用、数据库或存储。" />
+        </section>
       )}
 
       {detail.cronjobs.length > 0 && (
