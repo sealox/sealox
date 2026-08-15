@@ -50,6 +50,20 @@ function matchesBucket(hints: EnvHints, bucket: BucketInfo): boolean {
   return false
 }
 
+/** 单份库：env 是否已证实引用该库。不用「只有一个应用就全连上」的回退 */
+export function workloadUsesDatabase(
+  workload: V1Deployment | V1StatefulSet,
+  dbName: string,
+  connSecret?: string
+): boolean {
+  const hints = envHints(workload)
+  return (
+    hints.secretNames.some((secret) => secretMatchesDb(secret, dbName)) ||
+    (connSecret !== undefined && hints.secretNames.includes(connSecret)) ||
+    hints.literals.some((value) => literalMatchesDb(value, dbName))
+  )
+}
+
 function addLink(links: ProjectLink[], seen: Set<string>, link: ProjectLink): void {
   const key = `${link.app}\0${link.targetKind}\0${link.target}`
   if (seen.has(key)) return
@@ -75,11 +89,9 @@ export function inferProjectLinks(
     if (!raw) continue
     const hints = envHints(raw)
     for (const db of databases) {
-      const hit =
-        hints.secretNames.some((secret) => secretMatchesDb(secret, db.name)) ||
-        (db.connSecret !== undefined && hints.secretNames.includes(db.connSecret)) ||
-        hints.literals.some((value) => literalMatchesDb(value, db.name))
-      if (hit) addLink(links, seen, { app, targetKind: 'database', target: db.name })
+      if (workloadUsesDatabase(raw, db.name, db.connSecret)) {
+        addLink(links, seen, { app, targetKind: 'database', target: db.name })
+      }
     }
     for (const bucket of buckets) {
       if (matchesBucket(hints, bucket)) {

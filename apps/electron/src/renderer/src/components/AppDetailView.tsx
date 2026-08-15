@@ -30,7 +30,7 @@ interface Props {
   onOperated: () => void
 }
 
-interface LogState {
+export interface LogState {
   loading: boolean
   error?: string
   text?: string
@@ -38,7 +38,7 @@ interface LogState {
   previous: boolean
 }
 
-function PodRow({
+export function PodRow({
   pod,
   expanded,
   onToggle,

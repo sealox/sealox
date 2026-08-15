@@ -51,6 +51,7 @@ type DbNodeData = {
   status: AppStatus
   engine: string
   volume?: VolumeHint
+  onOpen: () => void
 }
 
 type BucketNodeData = {
@@ -207,7 +208,7 @@ function AppNode({ data }: NodeProps<AppTopoNode>): React.JSX.Element {
 
 function DbNode({ data }: NodeProps<DbTopoNode>): React.JSX.Element {
   return (
-    <div className="topo-node">
+    <div className="topo-node topo-node-click">
       <Handle type="target" position={Position.Top} className="topo-handle" isConnectable={false} />
       <div className="topo-node-main">
         <span className={`topo-node-ico ${engineTone(data.engine)}`}>
@@ -284,9 +285,17 @@ interface Props {
   buckets: BucketInfo[]
   links: ProjectLink[]
   onOpenApp: (name: string, kind: 'Deployment' | 'StatefulSet') => void
+  onOpenDatabase: (name: string) => void
 }
 
-function ProjectTopology({ apps, databases, buckets, links, onOpenApp }: Props): React.JSX.Element {
+function ProjectTopology({
+  apps,
+  databases,
+  buckets,
+  links,
+  onOpenApp,
+  onOpenDatabase
+}: Props): React.JSX.Element {
   const deps = [...databases, ...buckets]
   const appH = layerHeight(apps.length)
   const depH = layerHeight(deps.length)
@@ -325,7 +334,7 @@ function ProjectTopology({ apps, databases, buckets, links, onOpenApp }: Props):
         id: `db:${db.name}`,
         type: 'database',
         position: depPos[i],
-        className: 'nopan',
+        className: 'nopan topo-rf-app',
         draggable: false,
         selectable: false,
         style: { width: NODE_W },
@@ -333,7 +342,8 @@ function ProjectTopology({ apps, databases, buckets, links, onOpenApp }: Props):
           name: db.name,
           status: dbPhaseToStatus(db.phase),
           engine: engineLabel(db.engine, db.version),
-          volume: db.volume
+          volume: db.volume,
+          onOpen: () => onOpenDatabase(db.name)
         }
       })
     })
@@ -378,13 +388,12 @@ function ProjectTopology({ apps, databases, buckets, links, onOpenApp }: Props):
     }
 
     return { nodes: nextNodes, edges: nextEdges }
-  }, [apps, databases, buckets, links, onOpenApp, appH, gap, deps.length])
+  }, [apps, databases, buckets, links, onOpenApp, onOpenDatabase, appH, gap, deps.length])
 
   // xyflow：节点既不可选也不可拖、又没有 onNodeClick 时，wrapper 会设
   // pointer-events:none，卡片内部的 onClick（含公网链接）全部点不透。
-  const openAppNode = (_event: React.MouseEvent, node: TopologyNode): void => {
-    if (node.type !== 'app') return
-    node.data.onOpen()
+  const openNode = (_event: React.MouseEvent, node: TopologyNode): void => {
+    if (node.type === 'app' || node.type === 'database') node.data.onOpen()
   }
 
   return (
@@ -407,7 +416,7 @@ function ProjectTopology({ apps, databases, buckets, links, onOpenApp }: Props):
         preventScrolling={false}
         deleteKeyCode={null}
         multiSelectionKeyCode={null}
-        onNodeClick={openAppNode}
+        onNodeClick={openNode}
         proOptions={{ hideAttribution: false }}
       >
         <Background variant={BackgroundVariant.Dots} gap={18} size={1.1} color="#d4d4d2" />

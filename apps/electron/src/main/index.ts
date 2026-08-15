@@ -25,15 +25,26 @@ import {
   startDeviceLogin
 } from './sealos/auth'
 import { createAiKey, deleteAiKey, fetchAiProxyOverview, setAiKeyEnabled } from './sealos/aiproxy'
+import {
+  disableDatabasePublic,
+  enableDatabasePublic,
+  fetchDatabaseDetail,
+  fetchDatabaseMonitor,
+  fetchDatabaseSchema
+} from './sealos/database'
 import { fetchAppDetail, fetchAppMonitor, fetchPodLogs, fetchProjectDetail } from './sealos/details'
 import {
   deleteApp,
+  deleteDatabase,
   deleteProject,
   pauseApp,
+  pauseDatabase,
   pauseProject,
   restartApp,
+  restartDatabase,
   restartProject,
   startApp,
+  startDatabase,
   startProject
 } from './sealos/operate'
 import { fetchResources } from './sealos/resources'
@@ -141,6 +152,19 @@ function registerIpc(): void {
   ipcMain.handle('sealos:project-restart', (_event, name: string) => restartProject(name))
   ipcMain.handle('sealos:project-pause', (_event, name: string) => pauseProject(name))
   ipcMain.handle('sealos:project-start', (_event, name: string) => startProject(name))
+  ipcMain.handle('sealos:database-detail', (_event, name: string) => fetchDatabaseDetail(name))
+  ipcMain.handle('sealos:database-monitor', (_event, name: string) => fetchDatabaseMonitor(name))
+  ipcMain.handle('sealos:database-schema', (_event, name: string) => fetchDatabaseSchema(name))
+  ipcMain.handle('sealos:database-pause', (_event, name: string) => pauseDatabase(name))
+  ipcMain.handle('sealos:database-start', (_event, name: string) => startDatabase(name))
+  ipcMain.handle('sealos:database-restart', (_event, name: string) => restartDatabase(name))
+  ipcMain.handle('sealos:database-delete', (_event, name: string) => deleteDatabase(name))
+  ipcMain.handle('sealos:database-enable-public', (_event, name: string) =>
+    enableDatabasePublic(name)
+  )
+  ipcMain.handle('sealos:database-disable-public', (_event, name: string) =>
+    disableDatabasePublic(name)
+  )
   ipcMain.handle('sealos:workspaces', () => listWorkspaces())
   ipcMain.handle('sealos:workspace-switch', async (_event, uid: string) => {
     const status = await switchWorkspace(uid)

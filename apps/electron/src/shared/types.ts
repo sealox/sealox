@@ -265,6 +265,67 @@ export interface DatabaseDetail extends DatabaseInfo {
   createdAt?: string
 }
 
+/** 集群内 / 公网连接。明文只出现在数据库详情 IPC，不进列表快照 */
+export interface DatabaseConnection {
+  host: string
+  port: string
+  username: string
+  password: string
+  endpoint?: string
+  connectionString: string
+}
+
+export interface DatabaseUsedBy {
+  name: string
+  kind: 'Deployment' | 'StatefulSet'
+  status: AppStatus
+  project?: string
+}
+
+export interface DatabaseSchemaNode {
+  name: string
+  tables: string[]
+}
+
+export interface DatabaseSchemaTree {
+  supported: boolean
+  /** not-running | unsupported | fetch-failed */
+  reason?: string
+  databases: DatabaseSchemaNode[]
+}
+
+export interface DatabaseMonitor {
+  available: boolean
+  reason?: string
+  cpu: MonitorSeries[]
+  memory: MonitorSeries[]
+  disk: MonitorSeries[]
+  diskOverflow: boolean
+}
+
+/** 数据库详情页。连接明文只走 getDatabaseDetail */
+export interface DatabaseInstanceDetail {
+  name: string
+  engine?: string
+  version?: string
+  phase: string
+  project?: string
+  cpu?: number
+  memory?: number
+  storage?: number
+  replicas?: number
+  createdAt?: string
+  connection: DatabaseConnection | null
+  publicConnection: DatabaseConnection | null
+  /** Sealos publicConnection 原文（string）；解析失败时仍可供复制 */
+  publicConnectionRaw?: string
+  publicEnabled: boolean
+  usedBy: DatabaseUsedBy[]
+  pods: PodDetail[]
+  events: EventInfo[]
+  fetchedAt: string
+}
+
 export interface ProjectDetail {
   name: string
   /** 用户备注名（deploy-on-sealos-displayName 注解） */
@@ -566,6 +627,15 @@ export interface HeliosApi {
   restartProject(name: string): Promise<void>
   pauseProject(name: string): Promise<void>
   startProject(name: string): Promise<void>
+  getDatabaseDetail(name: string): Promise<DatabaseInstanceDetail>
+  getDatabaseMonitor(name: string): Promise<DatabaseMonitor>
+  getDatabaseSchema(name: string): Promise<DatabaseSchemaTree>
+  pauseDatabase(name: string): Promise<void>
+  startDatabase(name: string): Promise<void>
+  restartDatabase(name: string): Promise<void>
+  deleteDatabase(name: string): Promise<void>
+  enableDatabasePublic(name: string): Promise<void>
+  disableDatabasePublic(name: string): Promise<void>
   listWorkspaces(): Promise<WorkspaceInfo[]>
   switchWorkspace(uid: string): Promise<SealosStatus>
   getWorkspaceDetails(uid: string): Promise<WorkspaceDetails>

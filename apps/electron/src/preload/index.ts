@@ -11,6 +11,9 @@ import type {
   ChatEvent,
   ChatInputResponse,
   ChatListItem,
+  DatabaseInstanceDetail,
+  DatabaseMonitor,
+  DatabaseSchemaTree,
   HeliosApi,
   LoginEvent,
   ProjectDetail,
@@ -64,6 +67,22 @@ const helios: HeliosApi = {
     ipcRenderer.invoke('sealos:project-restart', name),
   pauseProject: (name: string): Promise<void> => ipcRenderer.invoke('sealos:project-pause', name),
   startProject: (name: string): Promise<void> => ipcRenderer.invoke('sealos:project-start', name),
+  getDatabaseDetail: (name: string): Promise<DatabaseInstanceDetail> =>
+    ipcRenderer.invoke('sealos:database-detail', name),
+  getDatabaseMonitor: (name: string): Promise<DatabaseMonitor> =>
+    ipcRenderer.invoke('sealos:database-monitor', name),
+  getDatabaseSchema: (name: string): Promise<DatabaseSchemaTree> =>
+    ipcRenderer.invoke('sealos:database-schema', name),
+  pauseDatabase: (name: string): Promise<void> => ipcRenderer.invoke('sealos:database-pause', name),
+  startDatabase: (name: string): Promise<void> => ipcRenderer.invoke('sealos:database-start', name),
+  restartDatabase: (name: string): Promise<void> =>
+    ipcRenderer.invoke('sealos:database-restart', name),
+  deleteDatabase: (name: string): Promise<void> =>
+    ipcRenderer.invoke('sealos:database-delete', name),
+  enableDatabasePublic: (name: string): Promise<void> =>
+    ipcRenderer.invoke('sealos:database-enable-public', name),
+  disableDatabasePublic: (name: string): Promise<void> =>
+    ipcRenderer.invoke('sealos:database-disable-public', name),
   listWorkspaces: (): Promise<WorkspaceInfo[]> => ipcRenderer.invoke('sealos:workspaces'),
   switchWorkspace: (uid: string): Promise<SealosStatus> =>
     ipcRenderer.invoke('sealos:workspace-switch', uid),

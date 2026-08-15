@@ -92,7 +92,7 @@ function containerInfos(pod: V1Pod): ContainerInfo[] {
   })
 }
 
-function podDetail(pod: V1Pod): PodDetail {
+export function podDetail(pod: V1Pod): PodDetail {
   const statuses = pod.status?.containerStatuses ?? []
   const stuck = statuses
     .map((s) => s.state?.waiting ?? s.state?.terminated)
@@ -112,7 +112,7 @@ function podDetail(pod: V1Pod): PodDetail {
   }
 }
 
-function toEventInfo(event: CoreV1Event): EventInfo {
+export function toEventInfo(event: CoreV1Event): EventInfo {
   return {
     type: event.type ?? 'Normal',
     reason: event.reason ?? '',
@@ -130,7 +130,7 @@ function toEventInfo(event: CoreV1Event): EventInfo {
   }
 }
 
-function eventTime(event: CoreV1Event): number {
+export function eventTime(event: CoreV1Event): number {
   const t = event.lastTimestamp ?? event.eventTime ?? event.firstTimestamp
   return t ? new Date(t as unknown as string).getTime() : 0
 }

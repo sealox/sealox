@@ -203,25 +203,32 @@ function mapK8sListError(err: unknown): Error {
   return new Error('无法列出项目组件')
 }
 
-async function pauseDatabase(name: string): Promise<void> {
+export async function pauseDatabase(name: string): Promise<void> {
   const dbName = requireName(name)
   const { status, body } = await request(dbUrl(dbName, '/pause'), 'POST', 'pause')
   if (isSuccess(status)) return
   throw mapOperateError(status, body, 'pause', 'database')
 }
 
-async function startDatabase(name: string): Promise<void> {
+export async function startDatabase(name: string): Promise<void> {
   const dbName = requireName(name)
   const { status, body } = await request(dbUrl(dbName, '/start'), 'POST', 'start')
   if (isSuccess(status)) return
   throw mapOperateError(status, body, 'start', 'database')
 }
 
-async function restartDatabase(name: string): Promise<void> {
+export async function restartDatabase(name: string): Promise<void> {
   const dbName = requireName(name)
   const { status, body } = await request(dbUrl(dbName, '/restart'), 'POST', 'restart')
   if (isSuccess(status)) return
   throw mapOperateError(status, body, 'restart', 'database')
+}
+
+export async function deleteDatabase(name: string): Promise<void> {
+  const dbName = requireName(name)
+  const { status, body } = await request(dbUrl(dbName, ''), 'DELETE', 'delete')
+  if (isSuccess(status) || status === 404) return
+  throw mapOperateError(status, body, 'delete', 'database')
 }
 
 /** 当前 ns 里同时带项目归属标签和 Launchpad 标签的 Deployment / StatefulSet 名 */
@@ -255,11 +262,7 @@ async function listProjectDatabases(
 ): Promise<Array<{ name: string; phase: string }>> {
   const { kc, namespace } = loadNamespace()
   try {
-    const clusters = await listKubeBlocksClusters(
-      kc,
-      namespace,
-      `${PROJECT_LABEL}=${instanceName}`
-    )
+    const clusters = await listKubeBlocksClusters(kc, namespace, `${PROJECT_LABEL}=${instanceName}`)
     const out: Array<{ name: string; phase: string }> = []
     for (const cluster of clusters ?? []) {
       const n = cluster.metadata?.name
@@ -320,10 +323,7 @@ export async function pauseProject(name: string): Promise<void> {
     listProjectDatabases(instanceName)
   ])
   const dbNames = databases.filter((db) => !dbPhaseStopped(db.phase)).map((db) => db.name)
-  const failures = [
-    ...(await runEach(apps, pauseApp)),
-    ...(await runEach(dbNames, pauseDatabase))
-  ]
+  const failures = [...(await runEach(apps, pauseApp)), ...(await runEach(dbNames, pauseDatabase))]
   throwIfFailed('暂停', failures)
 }
 
@@ -334,9 +334,6 @@ export async function startProject(name: string): Promise<void> {
     listProjectDatabases(instanceName)
   ])
   const dbNames = databases.filter((db) => !dbPhaseRunning(db.phase)).map((db) => db.name)
-  const failures = [
-    ...(await runEach(dbNames, startDatabase)),
-    ...(await runEach(apps, startApp))
-  ]
+  const failures = [...(await runEach(dbNames, startDatabase)), ...(await runEach(apps, startApp))]
   throwIfFailed('启动', failures)
 }

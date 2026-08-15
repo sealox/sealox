@@ -3,6 +3,7 @@ import sealosLogo from '../assets/sealos-logo-gold.svg'
 import AiProxyTab from './AiProxyTab'
 import AppDetailView, { type Crumb } from './AppDetailView'
 import ConfirmDialog from './ConfirmDialog'
+import DatabaseDetailView from './DatabaseDetailView'
 import ProjectDetailView from './ProjectDetailView'
 import TemplatesTab from './TemplatesTab'
 import WorkspacePanel from './WorkspacePanel'
@@ -30,6 +31,7 @@ type Tab =
 type DetailEntry =
   | { type: 'project'; name: string }
   | { type: 'app'; name: string; kind: 'Deployment' | 'StatefulSet' }
+  | { type: 'database'; name: string }
 
 const REFRESH_INTERVAL_MS = 15_000
 
@@ -222,6 +224,8 @@ function pruneDetailStack(stack: DetailEntry[], snap: ResourceSnapshot): DetailE
   for (const entry of stack) {
     if (entry.type === 'project') {
       if (!snap.projects.some((p) => p.name === entry.name)) break
+    } else if (entry.type === 'database') {
+      if (!snap.databases.some((d) => d.name === entry.name)) break
     } else if (!snap.apps.some((a) => a.name === entry.name && a.kind === entry.kind)) {
       break
     }
@@ -246,6 +250,12 @@ type PendingDelete =
     }
   | {
       type: 'app'
+      name: string
+      project?: string
+      projectTitle?: string
+    }
+  | {
+      type: 'database'
       name: string
       project?: string
       projectTitle?: string
@@ -561,14 +571,44 @@ function WorkloadCard({
   )
 }
 
-function DatabaseCard({ db }: { db: DatabaseInfo }): React.JSX.Element {
+function DatabaseCard({
+  db,
+  onOpen,
+  onOpenProject
+}: {
+  db: DatabaseInfo
+  onOpen: () => void
+  onOpenProject: (project: string) => void
+}): React.JSX.Element {
   return (
-    <div className="card">
+    <div
+      className="card card-clickable"
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onOpen()
+      }}
+    >
       <div className="card-head">
         <span className={statusClass(dbPhaseToStatus(db.phase))} />
         <h3>{db.name}</h3>
         {db.engine && <span className="chip">{db.engine}</span>}
-        {db.project && <span className="chip chip-project">{db.project}</span>}
+        {db.project && (
+          <button
+            className="chip chip-project chip-link"
+            title={`打开项目 ${db.project}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenProject(db.project as string)
+            }}
+          >
+            {db.project}
+          </button>
+        )}
+        <span className="card-head-actions">
+          <span className="card-open-hint">›</span>
+        </span>
       </div>
       <div className="card-meta">
         <span>
@@ -713,7 +753,15 @@ function AppsTab({
   )
 }
 
-function DatabasesTab({ snapshot }: { snapshot: ResourceSnapshot }): React.JSX.Element {
+function DatabasesTab({
+  snapshot,
+  onOpenDatabase,
+  onOpenProject
+}: {
+  snapshot: ResourceSnapshot
+  onOpenDatabase: (name: string) => void
+  onOpenProject: (name: string) => void
+}): React.JSX.Element {
   if (snapshot.databases.length === 0) {
     return (
       <div className="placeholder">
@@ -724,7 +772,12 @@ function DatabasesTab({ snapshot }: { snapshot: ResourceSnapshot }): React.JSX.E
   return (
     <div className="grid">
       {snapshot.databases.map((db) => (
-        <DatabaseCard key={db.name} db={db} />
+        <DatabaseCard
+          key={db.name}
+          db={db}
+          onOpen={() => onOpenDatabase(db.name)}
+          onOpenProject={onOpenProject}
+        />
       ))}
     </div>
   )
@@ -837,6 +890,11 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkError, setBulkError] = useState('')
+  const [chatDraft, setChatDraft] = useState<{
+    key: string
+    text: string
+    workspace: string
+  } | null>(null)
   const bulkLockRef = useRef(false)
 
   const clearSelection = useCallback(() => {
@@ -860,10 +918,32 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
     setDetailStack([{ type: 'project', name }])
   }, [])
 
+  const openDatabase = useCallback((name: string) => {
+    setTab('databases')
+    setDetailStack([{ type: 'database', name }])
+  }, [])
+
   /** 在当前栈上叠加应用详情（保留返回路径） */
   const pushApp = useCallback((name: string, kind: 'Deployment' | 'StatefulSet') => {
     setDetailStack((stack) => [...stack, { type: 'app', name, kind }])
   }, [])
+
+  const pushDatabase = useCallback((name: string) => {
+    setDetailStack((stack) => [...stack, { type: 'database', name }])
+  }, [])
+
+  const askHelios = useCallback(
+    (draft: string) => {
+      setChatDraft({
+        key: crypto.randomUUID(),
+        text: draft,
+        workspace: status.workspace ?? status.namespace ?? ''
+      })
+      setTab('home')
+      setDetailStack([])
+    },
+    [status.workspace, status.namespace]
+  )
 
   const refresh = useCallback(() => {
     setLoading(true)
@@ -879,20 +959,18 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
       .finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => {
-    clearSelection()
+  const selectionScope = `${tab}:${status.workspace ?? ''}:${status.namespace ?? ''}`
+  const [appliedSelectionScope, setAppliedSelectionScope] = useState(selectionScope)
+  if (appliedSelectionScope !== selectionScope) {
+    setAppliedSelectionScope(selectionScope)
+    setSelected(new Set())
+    setBulkError('')
     setPendingDelete(null)
     setDeleteError('')
-  }, [tab, status.workspace, status.namespace, clearSelection])
+  }
 
-  const projectViews = useMemo(
-    () => (snapshot ? buildProjectViews(snapshot) : []),
-    [snapshot]
-  )
-  const launchpadApps = useMemo(
-    () => snapshot?.apps.filter((a) => a.launchpad) ?? [],
-    [snapshot]
-  )
+  const projectViews = useMemo(() => (snapshot ? buildProjectViews(snapshot) : []), [snapshot])
+  const launchpadApps = useMemo(() => snapshot?.apps.filter((a) => a.launchpad) ?? [], [snapshot])
   const selectedProjectViews = useMemo(
     () => projectViews.filter((v) => selected.has(v.project.name)),
     [projectViews, selected]
@@ -979,9 +1057,7 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
         .map((v) => v.project.name)
       void runBulkOperate('暂停', names, (name) => window.helios.pauseProject(name))
     } else {
-      const names = selectedLaunchpadApps
-        .filter((a) => a.status !== 'Stopped')
-        .map((a) => a.name)
+      const names = selectedLaunchpadApps.filter((a) => a.status !== 'Stopped').map((a) => a.name)
       void runBulkOperate('暂停', names, (name) => window.helios.pauseApp(name))
     }
   }, [tab, selectedProjectViews, selectedLaunchpadApps, runBulkOperate])
@@ -1114,7 +1190,9 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
     const run =
       pending.type === 'project'
         ? window.helios.deleteProject(pending.name)
-        : window.helios.deleteApp(pending.name)
+        : pending.type === 'database'
+          ? window.helios.deleteDatabase(pending.name)
+          : window.helios.deleteApp(pending.name)
     void run
       .then(async () => {
         setPendingDelete(null)
@@ -1132,7 +1210,10 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
             next = []
           } else {
             const top = stack[stack.length - 1]
-            if (top?.type === 'app' && top.name === pending.name) {
+            if (
+              (pending.type === 'app' && top?.type === 'app' && top.name === pending.name) ||
+              (pending.type === 'database' && top?.type === 'database' && top.name === pending.name)
+            ) {
               next = stack.slice(0, -1)
             }
           }
@@ -1154,6 +1235,8 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
     }
   }, [refresh])
 
+  const workspaceId = status.workspace ?? status.namespace ?? ''
+  const activeDraft = chatDraft?.workspace === workspaceId ? chatDraft : null
   const workspaceLabel = status.workspaceName ?? status.workspace ?? 'Sealos 工作空间'
   const avatarLetter = (status.workspaceName ?? status.namespace ?? 'S')
     .replace(/^ns-/, '')
@@ -1317,6 +1400,8 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
             key={status.workspace ?? status.namespace ?? ''}
             workspaceId={status.workspace ?? status.namespace ?? ''}
             insetLeft={collapsed ? 52 : 12}
+            composerDraft={activeDraft?.text}
+            draftKey={activeDraft?.key}
           />
         </div>
         {tab !== 'home' &&
@@ -1338,19 +1423,45 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
                           : undefined
                     }))
                   ]
-                  return top.type === 'project' ? (
-                    <ProjectDetailView
-                      key={top.name}
-                      name={top.name}
-                      crumbs={crumbs}
-                      onOpenApp={pushApp}
-                      onOperated={refresh}
-                      onRequestDelete={(info) => {
-                        setDeleteError('')
-                        setPendingDelete({ type: 'project', name: top.name, ...info })
-                      }}
-                    />
-                  ) : (
+                  if (top.type === 'project') {
+                    return (
+                      <ProjectDetailView
+                        key={top.name}
+                        name={top.name}
+                        crumbs={crumbs}
+                        onOpenApp={pushApp}
+                        onOpenDatabase={pushDatabase}
+                        onOperated={refresh}
+                        onRequestDelete={(info) => {
+                          setDeleteError('')
+                          setPendingDelete({ type: 'project', name: top.name, ...info })
+                        }}
+                      />
+                    )
+                  }
+                  if (top.type === 'database') {
+                    return (
+                      <DatabaseDetailView
+                        key={top.name}
+                        name={top.name}
+                        crumbs={crumbs}
+                        onOpenProject={openProject}
+                        onOpenApp={pushApp}
+                        onOperated={refresh}
+                        onAskHelios={askHelios}
+                        onRequestDelete={(project) => {
+                          setDeleteError('')
+                          setPendingDelete({
+                            type: 'database',
+                            name: top.name,
+                            project,
+                            projectTitle: project ? projectTitleOf(snapshot, project) : undefined
+                          })
+                        }}
+                      />
+                    )
+                  }
+                  return (
                     <AppDetailView
                       key={`${top.kind}-${top.name}`}
                       name={top.name}
@@ -1442,7 +1553,13 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
                         onDeleteApp={requestDeleteApp}
                       />
                     )}
-                    {snapshot && tab === 'databases' && <DatabasesTab snapshot={snapshot} />}
+                    {snapshot && tab === 'databases' && (
+                      <DatabasesTab
+                        snapshot={snapshot}
+                        onOpenDatabase={openDatabase}
+                        onOpenProject={openProject}
+                      />
+                    )}
                     {snapshot && tab === 'storage' && <StorageTab snapshot={snapshot} />}
                     {tab === 'account' && (
                       <AccountTab status={status} snapshot={snapshot} onLogout={onLogout} />
@@ -1507,6 +1624,41 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
           </p>
         </ConfirmDialog>
       )}
+      {pendingDelete?.type === 'database' && !pendingDelete.project && (
+        <ConfirmDialog
+          title="删除数据库？"
+          confirmLabel="删除数据库"
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={closeDeleteDialog}
+          onConfirm={confirmDelete}
+        >
+          <p>确定删除「{pendingDelete.name}」？不可恢复。</p>
+        </ConfirmDialog>
+      )}
+      {pendingDelete?.type === 'database' && pendingDelete.project && (
+        <ConfirmDialog
+          title="删除数据库？"
+          confirmLabel="只删除这个数据库"
+          extraLabel="去项目"
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={closeDeleteDialog}
+          onExtra={() => {
+            if (deleteBusy || !pendingDelete.project) return
+            const project = pendingDelete.project
+            setPendingDelete(null)
+            setDeleteError('')
+            openProject(project)
+          }}
+          onConfirm={confirmDelete}
+        >
+          <p>
+            「{pendingDelete.name}」是项目「{pendingDelete.projectTitle || pendingDelete.project}
+            」的一部分。删库可能让应用连不上。要拆整个栈，走项目删除。
+          </p>
+        </ConfirmDialog>
+      )}
       {pendingDelete?.type === 'projects' && (
         <ConfirmDialog
           title="删除项目？"
@@ -1535,9 +1687,7 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
         >
           <p>将删除 {pendingDelete.names.length} 个应用。不可恢复。</p>
           {pendingDelete.inProject > 0 && (
-            <p>
-              其中 {pendingDelete.inProject} 个是项目的一部分，只删应用、不拆项目。
-            </p>
+            <p>其中 {pendingDelete.inProject} 个是项目的一部分，只删应用、不拆项目。</p>
           )}
         </ConfirmDialog>
       )}

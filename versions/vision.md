@@ -6,7 +6,7 @@ Helios 不是又一个 Sealos 控制台，也不是为了「做 agent」而做�
 
 用户的需求经常是模糊的——那种交给 agent，用自然语言理解 intent。确定性强的动作（部署这个模板、删除这个项目、重启这个应用）走界面按钮：点下去就是那件事，不经过对话。对话的确定性比按钮差，不该承担这类操作。侧栏和详情负责诚实展示那个世界。
 
-版本记录：[0.1 baseline](./0.1-baseline.md)、[0.2 agent chat](./0.2-agent-chat.md)、[0.3 templates](./0.3-templates.md)、[0.4 operate](./0.4-operate.md)、[0.5 topology](./0.5-topology.md)。
+版本记录：[0.1 baseline](./0.1-baseline.md)、[0.2 agent chat](./0.2-agent-chat.md)、[0.3 templates](./0.3-templates.md)、[0.4 operate](./0.4-operate.md)、[0.5 topology](./0.5-topology.md)、[0.6 database](./0.6-database.md)。
 
 ## 为什么存在
 

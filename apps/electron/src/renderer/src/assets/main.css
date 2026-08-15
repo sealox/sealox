@@ -4090,8 +4090,112 @@
   padding: 1.5px;
 }
 
+.spark-grid-3 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.db-switch {
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 4px 0 2px;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.db-switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.db-switch-track {
+  width: 32px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--border);
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.db-switch-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  transition: transform 0.15s;
+}
+
+.db-switch.on .db-switch-track {
+  background: var(--accent-gold);
+}
+
+.db-switch.on .db-switch-track::after {
+  transform: translateX(14px);
+}
+
+.db-env {
+  margin-top: 14px;
+}
+
+.schema-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.schema-db-name {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.schema-tables {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.schema-table {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  box-shadow: inset 0 0 0 0.5px var(--border);
+  border-radius: 8px;
+  padding: 3px 8px;
+  user-select: text;
+}
+
+.schema-empty {
+  font-size: 12px;
+}
+
+.schema-unsupported {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.schema-unsupported .dempty {
+  padding: 0;
+}
+
 @media (max-width: 980px) {
   .spark-grid,
+  .spark-grid-3,
   .conf-grid {
     grid-template-columns: 1fr;
   }

@@ -18,6 +18,8 @@ import { MAX_CHAT_FILES } from '../../../shared/types'
 interface Props {
   workspaceId: string
   insetLeft: number
+  composerDraft?: string
+  draftKey?: string
 }
 
 const PROMPT_SUGGESTIONS: Array<{ label: string; icon: React.JSX.Element }> = [
@@ -291,8 +293,13 @@ function QuestionCard({
   )
 }
 
-export default function HomeChat({ workspaceId, insetLeft }: Props): React.JSX.Element {
-  const [text, setText] = useState('')
+export default function HomeChat({
+  workspaceId,
+  insetLeft,
+  composerDraft,
+  draftKey
+}: Props): React.JSX.Element {
+  const [text, setText] = useState(composerDraft ?? '')
   const [list, setList] = useState<ChatListItem[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [conversation, setConversation] = useState<ChatConversation | null>(null)
@@ -404,6 +411,29 @@ export default function HomeChat({ workspaceId, insetLeft }: Props): React.JSX.E
     setDrawerOpen(false)
     requestAnimationFrame(() => textareaRef.current?.focus())
   }, [])
+
+  const [appliedDraftKey, setAppliedDraftKey] = useState(draftKey)
+  if (draftKey && draftKey !== appliedDraftKey) {
+    setAppliedDraftKey(draftKey)
+    setSelectedId(null)
+    setConversation(null)
+    setBusy(false)
+    setPendingFiles([])
+    setAttachError('')
+    setDrawerOpen(false)
+    setText(composerDraft ?? '')
+  }
+
+  useEffect(() => {
+    if (!draftKey) return
+    const el = textareaRef.current
+    if (!el) return
+    el.focus()
+    const len = el.value.length
+    el.setSelectionRange(len, len)
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+  }, [draftKey])
 
   const openChat = useCallback((id: string) => {
     stickToBottom.current = true

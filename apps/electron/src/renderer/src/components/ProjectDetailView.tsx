@@ -19,6 +19,7 @@ interface Props {
   name: string
   crumbs: Crumb[]
   onOpenApp: (name: string, kind: 'Deployment' | 'StatefulSet') => void
+  onOpenDatabase: (name: string) => void
   onRequestDelete: (info: {
     displayName?: string
     apps: number
@@ -40,6 +41,7 @@ function ProjectDetailView({
   name,
   crumbs,
   onOpenApp,
+  onOpenDatabase,
   onRequestDelete,
   onOperated
 }: Props): React.JSX.Element {
@@ -304,6 +306,7 @@ function ProjectDetailView({
           buckets={detail.buckets}
           links={detail.links ?? []}
           onOpenApp={onOpenApp}
+          onOpenDatabase={onOpenDatabase}
         />
       ) : (
         <section className="dsection">
