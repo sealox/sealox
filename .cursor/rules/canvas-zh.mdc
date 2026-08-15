@@ -1,0 +1,12 @@
+---
+description: Cursor Canvas 面向用户的文案必须用中文。
+alwaysApply: true
+---
+
+# Canvas 用中文
+
+写或改 `.canvas.tsx` 时，用户看得见的文案一律中文：标题、段落、表格、卡片、Callout、Stat 标签、Pill。
+
+专有名词、API 路径、代码标识保持原文：Helios、Sealos、Railway、`dbprovider.{region}/api/v2alpha/...`、`DATABASE_URL`。
+
+不要中英混排当正文（「What Sealos actually ships」这种标题不行）。聊天里可以中英，Canvas 不行。
