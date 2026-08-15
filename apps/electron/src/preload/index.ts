@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
   AgentStatus,
+  AppUpdateStatus,
   AiKeyInfo,
   AiProxyOverview,
   AppDetail,
@@ -29,6 +30,8 @@ import type {
 
 const helios: HeliosApi = {
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('helios:app-version'),
+  getUpdateStatus: (): Promise<AppUpdateStatus> => ipcRenderer.invoke('helios:update-status'),
+  downloadUpdate: (): Promise<void> => ipcRenderer.invoke('helios:update-download'),
   getStatus: (): Promise<SealosStatus> => ipcRenderer.invoke('sealos:status'),
   getRegions: (): Promise<RegionOption[]> => ipcRenderer.invoke('sealos:regions'),
   startLogin: (region?: string): Promise<void> => ipcRenderer.invoke('sealos:login-start', region),
@@ -127,6 +130,11 @@ const helios: HeliosApi = {
     const wrapped = (_: Electron.IpcRendererEvent, event: ChatEvent): void => listener(event)
     ipcRenderer.on('helios:chat-event', wrapped)
     return () => ipcRenderer.removeListener('helios:chat-event', wrapped)
+  },
+  onUpdateEvent: (listener: (status: AppUpdateStatus) => void): (() => void) => {
+    const wrapped = (_: Electron.IpcRendererEvent, event: AppUpdateStatus): void => listener(event)
+    ipcRenderer.on('helios:update-event', wrapped)
+    return () => ipcRenderer.removeListener('helios:update-event', wrapped)
   }
 }
 

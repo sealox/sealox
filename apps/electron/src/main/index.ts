@@ -57,6 +57,7 @@ import {
   renameWorkspace,
   switchWorkspace
 } from './sealos/workspaces'
+import { downloadUpdate, getUpdateStatus, startUpdateChecker, stopUpdateChecker } from './update'
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -94,6 +95,8 @@ function createWindow(): BrowserWindow {
 
 function registerIpc(): void {
   ipcMain.handle('helios:app-version', () => app.getVersion())
+  ipcMain.handle('helios:update-status', () => getUpdateStatus())
+  ipcMain.handle('helios:update-download', () => downloadUpdate())
   ipcMain.handle('sealos:status', () => getStatus())
   ipcMain.handle('sealos:regions', () => KNOWN_REGIONS)
 
@@ -228,6 +231,7 @@ app.whenReady().then(() => {
 
   registerIpc()
   createWindow()
+  startUpdateChecker()
   if (getStatus().authenticated) void startAgent()
 
   app.on('activate', function () {
@@ -236,6 +240,7 @@ app.whenReady().then(() => {
 })
 
 app.on('before-quit', () => {
+  stopUpdateChecker()
   void stopAgent()
 })
 

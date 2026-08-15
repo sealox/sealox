@@ -10,6 +10,7 @@ import WorkspacePanel from './WorkspacePanel'
 import HomeChat from './HomeChat'
 import type {
   AppStatus,
+  AppUpdateStatus,
   AppWorkload,
   BucketInfo,
   DatabaseInfo,
@@ -867,6 +868,40 @@ const TAB_TITLE: Record<Exclude<Tab, 'home'>, string> = {
   account: '用户信息'
 }
 
+function updateAction(status: AppUpdateStatus): string {
+  if (status.phase === 'downloading') {
+    const pct = Math.round((status.progress ?? 0) * 100)
+    return `正在下载 ${pct}%`
+  }
+  if (status.phase === 'ready') return '已打开安装包，拖进「应用程序」后重新打开'
+  if (status.phase === 'error') return status.error || '下载失败，点击重试'
+  return '点击下载安装包'
+}
+
+function UpdateDot({ status }: { status: AppUpdateStatus }): React.JSX.Element {
+  return (
+    <div className="update-badge">
+      <button
+        type="button"
+        className={`update-dot${status.phase === 'downloading' ? ' busy' : ''}`}
+        aria-label={`Helios ${status.latestVersion} 可更新`}
+        onClick={() => void window.helios.downloadUpdate()}
+      />
+      <div className="update-tip" role="tooltip">
+        <div className="update-tip-ver">Helios {status.latestVersion}</div>
+        {status.notes ? <div className="update-tip-notes">{status.notes}</div> : null}
+        <button
+          type="button"
+          className="update-tip-action"
+          onClick={() => void window.helios.downloadUpdate()}
+        >
+          {updateAction(status)}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX.Element {
   const [tab, setTab] = useState<Tab>('home')
   const [detailStack, setDetailStack] = useState<DetailEntry[]>([])
@@ -874,6 +909,7 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
   const [snapshot, setSnapshot] = useState<ResourceSnapshot | null>(null)
   const [error, setError] = useState('')
   const [appVersion, setAppVersion] = useState('')
+  const [update, setUpdate] = useState<AppUpdateStatus | null>(null)
   const [wsOpen, setWsOpen] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
@@ -1228,6 +1264,11 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
     void window.helios.getAppVersion().then(setAppVersion)
   }, [])
 
+  useEffect(() => {
+    void window.helios.getUpdateStatus().then(setUpdate)
+    return window.helios.onUpdateEvent(setUpdate)
+  }, [])
+
   const workspaceId = status.workspace ?? status.namespace ?? ''
   const activeDraft = chatDraft?.workspace === workspaceId ? chatDraft : null
   const workspaceLabel = status.workspaceName ?? status.workspace ?? 'Sealos 工作空间'
@@ -1259,9 +1300,12 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
         <header className="sidebar">
           <div className="sidebar-inner">
             <div className="sidebar-top">
-              <button className="sidebar-logo" title="Helios" onClick={() => navigateTab('home')}>
-                <img className="logo-img" src={sealosLogo} alt="" />
-              </button>
+              <div className="sidebar-logo-wrap">
+                <button className="sidebar-logo" title="Helios" onClick={() => navigateTab('home')}>
+                  <img className="logo-img" src={sealosLogo} alt="" />
+                </button>
+                {update?.available ? <UpdateDot status={update} /> : null}
+              </div>
               <button className="icon-btn" title="收起侧边栏" onClick={() => setCollapsed(true)}>
                 <PanelIcon />
               </button>

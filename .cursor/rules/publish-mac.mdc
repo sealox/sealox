@@ -1,0 +1,41 @@
+---
+description: 把 Helios 打成 macOS dmg 并发布到 norberia/helios-release。用户说发版、release、publish 时按此执行。
+alwaysApply: true
+---
+
+# 发 Helios 安装包
+
+用户明确说发版 / 发布 / release 才执行这两条命令。不要用 `electron-updater`、不要往私有仓 `norberia/helios` 建 GitHub Release、不要签名或公证。
+
+## 发之前
+
+1. 根、`apps/electron`、`apps/eve` 三个 `package.json` 的 `version` 必须相同，且就是这次要发出去的 `x.y.z`。
+2. `--notes` 是给用户看的中文，两三句（绿点浮层 + GitHub Release 同一段）。问用户写什么，不要用 commit 列表充数。
+3. 本机 Apple Silicon + Node 24；`gh` 已登录 `norberia`。
+
+## 命令
+
+仓库根目录，先打包再发布：
+
+```bash
+npm run build:mac
+npm run publish:mac -- --notes "这一版改了什么。"
+```
+
+- `build:mac` 产物：`apps/electron/dist/Helios-{version}-mac-arm64.dmg`（`CSC_IDENTITY_AUTO_DISCOVERY=false`、`--publish never`）。
+- `publish:mac` 在公开仓 [norberia/helios-release](https://github.com/norberia/helios-release) 创建 tag `v{version}` 的 Release，并更新 `latest.json`。Helios 启动时和每 30 分钟读这份清单。
+
+## 不要
+
+- 改探测 URL、把 dmg 提交进 git、把 GitHub token 打进 App
+- 发 Windows / Linux / Intel 包（只发 arm64 dmg）
+- 没打出 dmg 就跑 `publish:mac`；公开仓上 tag 已存在会失败，不要擅自删 Release
+
+## 怎么确认绿点
+
+正在跑的版本 **等于** `latest.json` 的 `version` 时不出绿点，这是对的。要测 UI：
+
+1. 先按上面发完这个版本（`url` / `sha256` 必须是真 dmg，空的不算更新）。
+2. 只把公开仓 `latest.json` 的 `version` 改成更高一号（例如 `0.7.0` → `0.8.0`），`url` / `sha256` / `notes` 不动。
+3. `npm run dev`（或打开刚装的包），登录后看侧栏 logo。启动就会查，不必等 30 分钟。
+4. 测完立刻把 `version` 改回去。不改的话，所有已装用户都会看到假更新。

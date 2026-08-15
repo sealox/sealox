@@ -600,8 +600,24 @@ export type ChatEvent =
   | { type: 'deleted'; conversationId: string }
   | { type: 'index'; workspaceId: string; items: ChatListItem[] }
 
+export type AppUpdatePhase = 'idle' | 'available' | 'downloading' | 'ready' | 'error'
+
+/** 渲染进程可见的更新状态。下载 URL 只留在主进程。 */
+export interface AppUpdateStatus {
+  currentVersion: string
+  available: boolean
+  latestVersion?: string
+  notes?: string
+  phase: AppUpdatePhase
+  /** 0–1，仅下载中 / 已打开 */
+  progress?: number
+  error?: string
+}
+
 export interface HeliosApi {
   getAppVersion(): Promise<string>
+  getUpdateStatus(): Promise<AppUpdateStatus>
+  downloadUpdate(): Promise<void>
   getStatus(): Promise<SealosStatus>
   getRegions(): Promise<RegionOption[]>
   startLogin(region?: string): Promise<void>
@@ -660,4 +676,5 @@ export interface HeliosApi {
   onLoginEvent(listener: (event: LoginEvent) => void): () => void
   onAgentStatus(listener: (status: AgentStatus) => void): () => void
   onChatEvent(listener: (event: ChatEvent) => void): () => void
+  onUpdateEvent(listener: (status: AppUpdateStatus) => void): () => void
 }

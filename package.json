@@ -1,6 +1,6 @@
 {
   "name": "helios",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "Deploy to Sealos from a desktop app — agent-first.",
   "workspaces": [
@@ -12,7 +12,8 @@
     "typecheck": "npm run typecheck -w @helios/electron && npm run typecheck -w eve",
     "lint": "npm run lint -w @helios/electron",
     "format": "npm run format -w @helios/electron",
-    "build:mac": "npm run build:mac -w @helios/electron"
+    "build:mac": "npm run build:mac -w @helios/electron",
+    "publish:mac": "node apps/electron/scripts/publish-mac.mjs"
   },
   "engines": {
     "node": "24.x"
