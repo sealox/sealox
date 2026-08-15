@@ -3,6 +3,7 @@ import type {
   DatabaseConnection,
   DatabaseInstanceDetail,
   DatabaseMonitor,
+  DatabaseSchemaNode,
   DatabaseSchemaTree,
   PodDetail
 } from '../../../shared/types'
@@ -51,6 +52,96 @@ function formatQuota(value: number | undefined, unit: string): string {
 
 function askDraft(detail: DatabaseInstanceDetail): string {
   return `请查看当前工作空间的数据库 ${detail.name}（引擎 ${detail.engine ?? '未知'}，版本 ${detail.version ?? '未知'}，状态 ${detail.phase}）。先不要改数据。我的问题是：`
+}
+
+const SYSTEM_DATABASES = new Set([
+  'postgres',
+  'template0',
+  'template1',
+  'mysql',
+  'information_schema',
+  'performance_schema',
+  'sys',
+  'admin',
+  'local',
+  'config'
+])
+
+function isSystemDatabase(name: string): boolean {
+  return SYSTEM_DATABASES.has(name)
+}
+
+function schemaVisibleTableCount(tree: DatabaseSchemaTree): number {
+  const app = tree.databases.filter((db) => !isSystemDatabase(db.name))
+  const source = app.length > 0 ? app : tree.databases
+  return source.reduce((n, db) => n + (db.tables?.length ?? 0), 0)
+}
+
+function SchemaCatalog({ tree }: { tree: DatabaseSchemaTree }): React.JSX.Element {
+  const { appDbs, systemDbs } = useMemo(() => {
+    const app: DatabaseSchemaNode[] = []
+    const system: DatabaseSchemaNode[] = []
+    for (const db of tree.databases) {
+      if (isSystemDatabase(db.name)) system.push(db)
+      else app.push(db)
+    }
+    const byName = (a: DatabaseSchemaNode, b: DatabaseSchemaNode) => a.name.localeCompare(b.name)
+    return { appDbs: app.sort(byName), systemDbs: system.sort(byName) }
+  }, [tree.databases])
+
+  const primary = appDbs.length > 0 ? appDbs : systemDbs
+  const tucked = appDbs.length > 0 ? systemDbs : []
+
+  return (
+    <div className="schema-tree">
+      {primary.map((db) => (
+        <SchemaDatabase key={db.name} db={db} />
+      ))}
+      {tucked.length > 0 && (
+        <details className="schema-system">
+          <summary>
+            系统库
+            <span className="dsection-count">{tucked.length}</span>
+          </summary>
+          {tucked.map((db) => (
+            <SchemaDatabase key={db.name} db={db} quiet />
+          ))}
+        </details>
+      )}
+    </div>
+  )
+}
+
+function SchemaDatabase({
+  db,
+  quiet = false
+}: {
+  db: DatabaseSchemaNode
+  quiet?: boolean
+}): React.JSX.Element {
+  const tables = useMemo(
+    () => [...(db.tables ?? [])].sort((a, b) => a.localeCompare(b)),
+    [db.tables]
+  )
+  return (
+    <div className={`schema-db${quiet ? ' quiet' : ''}`}>
+      <div className="schema-db-head">
+        <span className="schema-db-name mono">{db.name}</span>
+        <span className="schema-db-meta">
+          {tables.length === 0 ? '没有表' : `${tables.length} 张表`}
+        </span>
+      </div>
+      {tables.length > 0 && (
+        <ul className="schema-table-cols">
+          {tables.map((table) => (
+            <li key={table} className="mono">
+              {table}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
 }
 
 function SecretCopy({
@@ -524,7 +615,17 @@ function DatabaseDetailView({
         )}
       </Section>
 
-      <Section title="结构">
+      <Section
+        title="结构"
+        count={
+          schema &&
+          schema.supported &&
+          schema.reason !== 'not-running' &&
+          schema.reason !== 'fetch-failed'
+            ? schemaVisibleTableCount(schema)
+            : undefined
+        }
+      >
         {schemaLoading || !schema ? (
           <EmptyNote text="正在读取表结构…" />
         ) : schema.reason === 'not-running' ? (
@@ -544,24 +645,7 @@ function DatabaseDetailView({
         ) : schema.databases.length === 0 ? (
           <EmptyNote text="没有逻辑库。" />
         ) : (
-          <div className="schema-tree">
-            {schema.databases.map((db) => (
-              <div key={db.name} className="schema-db">
-                <div className="schema-db-name mono">{db.name}</div>
-                {db.tables.length === 0 ? (
-                  <div className="schema-empty hint">没有表</div>
-                ) : (
-                  <div className="schema-tables">
-                    {db.tables.map((table) => (
-                      <span key={table} className="schema-table mono">
-                        {table}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          <SchemaCatalog tree={schema} />
         )}
       </Section>
 
