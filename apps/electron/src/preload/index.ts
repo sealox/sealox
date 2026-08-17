@@ -17,6 +17,7 @@ import type {
   DatabaseSchemaTree,
   HeliosApi,
   LoginEvent,
+  ModelSettings,
   ProjectDetail,
   RegionOption,
   ResourceSnapshot,
@@ -101,6 +102,10 @@ const helios: HeliosApi = {
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('sealos:open-external', url),
   copyText: (text: string): Promise<void> => ipcRenderer.invoke('helios:copy-text', text),
   getAgentStatus: (): Promise<AgentStatus> => ipcRenderer.invoke('helios:agent-status'),
+  getModelSettings: (): Promise<ModelSettings> => ipcRenderer.invoke('helios:model-settings'),
+  saveDeepseekKey: (key: string): Promise<void> =>
+    ipcRenderer.invoke('helios:model-save-deepseek', key),
+  clearDeepseekKey: (): Promise<void> => ipcRenderer.invoke('helios:model-clear'),
   listChats: (): Promise<ChatListItem[]> => ipcRenderer.invoke('helios:chat-list'),
   getChat: (id: string): Promise<ChatConversation | null> =>
     ipcRenderer.invoke('helios:chat-get', id),

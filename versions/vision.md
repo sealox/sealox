@@ -6,7 +6,7 @@ Helios 不是又一个 Sealos 控制台，也不是为了「做 agent」而做�
 
 用户的需求经常是模糊的——那种交给 agent，用自然语言理解 intent。确定性强的动作（部署这个模板、删除这个项目、重启这个应用）走界面按钮：点下去就是那件事，不经过对话。对话的确定性比按钮差，不该承担这类操作。侧栏和详情负责诚实展示那个世界。
 
-版本记录：[0.1 baseline](./0.1-baseline.md)、[0.2 agent chat](./0.2-agent-chat.md)、[0.3 templates](./0.3-templates.md)、[0.4 operate](./0.4-operate.md)、[0.5 topology](./0.5-topology.md)、[0.6 database](./0.6-database.md)、[0.7 update](./0.7-update.md)。
+版本记录：[0.1 baseline](./0.1-baseline.md)、[0.2 agent chat](./0.2-agent-chat.md)、[0.3 templates](./0.3-templates.md)、[0.4 operate](./0.4-operate.md)、[0.5 topology](./0.5-topology.md)、[0.6 database](./0.6-database.md)、[0.7 update](./0.7-update.md)、[0.8 model key](./0.8-model-key.md)。
 
 ## 为什么存在
 
@@ -33,7 +33,7 @@ use-sealos skill（[sealos-skills-next](https://github.com/norberia/sealos-skill
 - **Electron**：唯一客户端。electron-vite + React + TypeScript；浅色主题。渲染进程不直连 eve（开发态跨端口 CORS、打包后 `file://` 同源都过不去）：主进程 HTTP 调 eve，对话经 IPC 流到首页。共享类型与 `window.helios` 接口集中在 `apps/electron/src/shared/types.ts`。
 - **eve**：登录后主进程后台拉起。开发态 `eve dev --no-ui --host 127.0.0.1 --port 24721`；打包态跑 `eve build` 产物（`.output/server/index.mjs`）并捆绑官方 Node 24。退出/登出杀掉，切换工作空间则换凭证重启。路由走 eve 默认 HTTP（`POST /eve/v1/session`、`GET /eve/v1/session/:id/stream`）。鉴权：开发 `localDev()`，打包 `httpBasic(helios / 本地密码)`。一轮对话跟 `session.waiting` / `turn.failed` 结束，不跟墙上时钟。
 - **工具与 sandbox**：eve 默认 bash / 文件 / 联网 / todo / ask_question 已启用。bash 不走 Docker/microsandbox——`helios-host` 在用户本机跑 `/bin/bash`，`HOME` 为 `~/.helios/home`（`.sealos` 软链到真实 `~/.sealos`），PATH 补 Homebrew / Docker。skill 脚本是 `python3` + `kubectl`（源码构建还要 `docker`）；没装这些 CLI 时部署会失败。首页把 `actions.requested` / `action.result` / `reasoning.appended` 投成活动行；命令截断展示，不把工具全文（可能含密钥）倒进 UI。
-- **模型凭证**：不走 Vercel AI Gateway。主进程向当前工作空间的 AI Proxy 确保一把名为 `helios` 的 Key（没有就创建，停用就打开），密钥只进 eve 子进程环境变量（`HELIOS_AI_BASE_URL` / `HELIOS_AI_KEY` / `HELIOS_AI_MODEL`），不进渲染进程。模型按该区域 `/api/models/enabled` 选择：聊天模型里优先 DeepSeek Flash（id 或厂商含 `deepseek` 且含 `flash`，`deepseek-v4-flash` / `deepseek-flash` 优先），没有则回退 `gemini-3.5-flash`。eve 用 `@ai-sdk/openai-compatible` 直连 `https://aiproxy.{region}/v1`。Flash 类模型常常不吐 reasoning token，这时首页只有工具活动、没有「思考过程」。
+- **模型凭证**：不走 Vercel AI Gateway。用户可在设置里接入自己的 DeepSeek API Key（本机 `~/.helios/model.json`，0600）；有 Key 时主进程直连 `https://api.deepseek.com/v1`，模型强制 `deepseek-v4-flash`。没有 Key 时维持原路径：向当前工作空间的 AI Proxy 确保一把名为 `helios` 的 Key（没有就创建，停用就打开），模型按该区域 `/api/models/enabled` 选择（DeepSeek Flash 优先，否则 `gemini-3.5-flash`），eve 直连 `https://aiproxy.{region}/v1`。两条路都只把密钥注入 eve 子进程环境变量（`HELIOS_AI_BASE_URL` / `HELIOS_AI_KEY` / `HELIOS_AI_MODEL`）；设置页保存时明文过一次 IPC，落盘后渲染进程只看到打码。Flash 类模型常常不吐 reasoning token，这时首页只有工具活动、没有「思考过程」。
 - **凭证与 skill 互认**：沿用 `~/.sealos/`（kubeconfig + auth.json，0600）。auth.json 除 `regional_token` 外另存 `app_token`（desktop 发给 iframe 应用的会话 JWT，`internalJwtSecret` 签名，aiproxy-web 等应用后端只认它）；登录与切换工作空间时随 regionToken/namespace-switch 响应一起落盘，旧登录态缺失时用 `regional_token` 重放一次 switch 无感补发。
 
 ## 工程约定

@@ -15,6 +15,7 @@ import type {
   ChatQuestion,
   ChatTraceItem
 } from '../../shared/types'
+import { readDeepseekCredential } from '../model-settings'
 import { getStatus } from '../sealos/auth'
 import { ensureHeliosKey } from '../sealos/aiproxy'
 import {
@@ -942,7 +943,7 @@ export async function startAgent(): Promise<void> {
 
   setStatus({ state: 'starting', detail: '正在准备 AI 服务…' })
   try {
-    const cred = await ensureHeliosKey()
+    const cred = (await readDeepseekCredential()) ?? (await ensureHeliosKey())
     if (epoch !== startEpoch) return
     setStatus({ state: 'starting', detail: `正在启动 AI 服务（${cred.model}）…` })
 

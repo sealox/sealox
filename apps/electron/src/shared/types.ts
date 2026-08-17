@@ -614,6 +614,12 @@ export interface AppUpdateStatus {
   error?: string
 }
 
+/** 渲染进程可见的模型接入状态。密钥落盘后只回打码，不回明文。 */
+export interface ModelSettings {
+  configured: boolean
+  hint?: string
+}
+
 export interface HeliosApi {
   getAppVersion(): Promise<string>
   getUpdateStatus(): Promise<AppUpdateStatus>
@@ -662,6 +668,9 @@ export interface HeliosApi {
   openExternal(url: string): Promise<void>
   copyText(text: string): Promise<void>
   getAgentStatus(): Promise<AgentStatus>
+  getModelSettings(): Promise<ModelSettings>
+  saveDeepseekKey(key: string): Promise<void>
+  clearDeepseekKey(): Promise<void>
   listChats(): Promise<ChatListItem[]>
   getChat(id: string): Promise<ChatConversation | null>
   pickChatFiles(): Promise<ChatAttachment[]>

@@ -58,6 +58,7 @@ import {
   switchWorkspace
 } from './sealos/workspaces'
 import { downloadUpdate, getUpdateStatus, startUpdateChecker, stopUpdateChecker } from './update'
+import { clearDeepseekKey, getModelSettings, saveDeepseekKey } from './model-settings'
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -194,6 +195,15 @@ function registerIpc(): void {
     clipboard.writeText(text)
   })
   ipcMain.handle('helios:agent-status', () => getAgentStatus())
+  ipcMain.handle('helios:model-settings', () => getModelSettings())
+  ipcMain.handle('helios:model-save-deepseek', async (_event, key: string) => {
+    await saveDeepseekKey(key)
+    if (getStatus().authenticated) void startAgent()
+  })
+  ipcMain.handle('helios:model-clear', async () => {
+    await clearDeepseekKey()
+    if (getStatus().authenticated) void startAgent()
+  })
   ipcMain.handle('helios:chat-list', () => listChats())
   ipcMain.handle('helios:chat-get', (_event, id: string) => getChat(id))
   ipcMain.handle('helios:chat-pick-files', (event) =>

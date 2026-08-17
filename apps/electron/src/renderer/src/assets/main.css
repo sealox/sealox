@@ -1549,6 +1549,71 @@
   background: rgba(220, 38, 38, 0.14);
 }
 
+.settings-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 620px;
+}
+
+.settings-stack .subsection {
+  margin-top: 0;
+}
+
+.settings-stack .info-card {
+  max-width: none;
+}
+
+.settings-model {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.settings-model-copy {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.settings-model-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-model-row .tpl-arg-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-model-link {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--accent-blue);
+  cursor: pointer;
+}
+
+.settings-model-link:hover {
+  text-decoration: underline;
+}
+
+.settings-model-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-model .error {
+  margin-bottom: 0;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));

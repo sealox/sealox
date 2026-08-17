@@ -211,6 +211,13 @@ function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+/** 设置页只要业务错误文案，不要 Electron IPC 包装。 */
+function ipcErrMsg(err: unknown): string {
+  const raw = errMsg(err).replace(/^Error invoking remote method '[^']+':\s*/, '')
+  const first = raw.replace(/^Error:\s*/, '').split('\n')[0] ?? raw
+  return first.trim() || raw
+}
+
 function pruneDetailStack(stack: DetailEntry[], snap: ResourceSnapshot): DetailEntry[] {
   const kept: DetailEntry[] = []
   for (const entry of stack) {
@@ -792,6 +799,101 @@ function StorageTab({ snapshot }: { snapshot: ResourceSnapshot }): React.JSX.Ele
   )
 }
 
+function ModelCard(): React.JSX.Element {
+  const [configured, setConfigured] = useState(false)
+  const [hint, setHint] = useState<string | undefined>()
+  const [key, setKey] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState<'save' | 'clear' | null>(null)
+
+  const reload = useCallback((): Promise<void> => {
+    return window.helios
+      .getModelSettings()
+      .then((settings) => {
+        setConfigured(settings.configured)
+        setHint(settings.hint)
+      })
+      .catch((err: unknown) => setError(ipcErrMsg(err)))
+  }, [])
+
+  useEffect(() => {
+    void reload()
+  }, [reload])
+
+  const save = (): void => {
+    if (busy) return
+    setBusy('save')
+    setError('')
+    window.helios
+      .saveDeepseekKey(key)
+      .then(() => {
+        setKey('')
+        return reload()
+      })
+      .catch((err: unknown) => setError(ipcErrMsg(err)))
+      .finally(() => setBusy(null))
+  }
+
+  const clear = (): void => {
+    if (busy) return
+    setBusy('clear')
+    setError('')
+    window.helios
+      .clearDeepseekKey()
+      .then(() => {
+        setKey('')
+        return reload()
+      })
+      .catch((err: unknown) => setError(ipcErrMsg(err)))
+      .finally(() => setBusy(null))
+  }
+
+  return (
+    <div className="info-card">
+      <div className="settings-model">
+        <p className="settings-model-copy">
+          对话固定使用 DeepSeek V4 Flash。未接入时走工作空间的 AI Proxy。
+        </p>
+        <div className="settings-model-row">
+          <input
+            className="tpl-arg-input"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={key}
+            placeholder={configured ? (hint ?? '') : 'DeepSeek API Key'}
+            disabled={busy !== null}
+            onChange={(e) => setKey(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') save()
+            }}
+          />
+          <button
+            type="button"
+            className="settings-model-link"
+            onClick={() =>
+              void window.helios.openExternal('https://platform.deepseek.com/api_keys')
+            }
+          >
+            去 DeepSeek 开 Key
+          </button>
+        </div>
+        <div className="settings-model-actions">
+          <button type="button" className="btn-neutral" disabled={busy !== null} onClick={save}>
+            保存
+          </button>
+          {configured ? (
+            <button type="button" className="btn-neutral" disabled={busy !== null} onClick={clear}>
+              清除
+            </button>
+          ) : null}
+        </div>
+        {error ? <div className="error">{error}</div> : null}
+      </div>
+    </div>
+  )
+}
+
 function AccountTab({
   status,
   snapshot,
@@ -810,21 +912,30 @@ function AccountTab({
     ['kubeconfig', status.kubeconfigPath, true]
   ]
   return (
-    <div className="info-card">
-      <dl>
-        {rows.map(
-          ([label, value, mono]) =>
-            value && (
-              <div key={label} className="info-row">
-                <dt>{label}</dt>
-                <dd className={mono ? 'mono' : undefined}>{value}</dd>
-              </div>
-            )
-        )}
-      </dl>
-      <button className="btn-neutral btn-logout" onClick={() => void onLogout()}>
-        退出登录
-      </button>
+    <div className="settings-stack">
+      <section className="subsection">
+        <h2>账户</h2>
+        <div className="info-card">
+          <dl>
+            {rows.map(
+              ([label, value, mono]) =>
+                value && (
+                  <div key={label} className="info-row">
+                    <dt>{label}</dt>
+                    <dd className={mono ? 'mono' : undefined}>{value}</dd>
+                  </div>
+                )
+            )}
+          </dl>
+          <button className="btn-neutral btn-logout" onClick={() => void onLogout()}>
+            退出登录
+          </button>
+        </div>
+      </section>
+      <section className="subsection">
+        <h2>模型</h2>
+        <ModelCard />
+      </section>
     </div>
   )
 }
@@ -865,7 +976,7 @@ const TAB_TITLE: Record<Exclude<Tab, 'home'>, string> = {
   databases: '数据库',
   storage: '存储',
   aiproxy: 'AI Proxy',
-  account: '用户信息'
+  account: '设置'
 }
 
 function updateAction(status: AppUpdateStatus): string {
@@ -1408,11 +1519,7 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
                 </div>
               )}
               <div className="sidebar-foot">
-                <button
-                  className="avatar-btn"
-                  title="用户信息"
-                  onClick={() => navigateTab('account')}
-                >
+                <button className="avatar-btn" title="设置" onClick={() => navigateTab('account')}>
                   <span className="avatar-dot">{avatarLetter}</span>
                 </button>
                 {appVersion ? (
@@ -1522,7 +1629,7 @@ function ResourcesScreen({ status, onStatusChange, onLogout }: Props): React.JSX
               <header className="page-head">
                 <div className="page-head-row">
                   <h1>{TAB_TITLE[tab]}</h1>
-                  {tab !== 'templates' && tab !== 'aiproxy' && snapshot && (
+                  {tab !== 'templates' && tab !== 'aiproxy' && tab !== 'account' && snapshot && (
                     <span className="hint">
                       更新于 {new Date(snapshot.fetchedAt).toLocaleTimeString()}
                     </span>
