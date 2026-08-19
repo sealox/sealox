@@ -1,0 +1,29 @@
+---
+description: 界面以 Figma helios-design 为准；改外观先改文件，再写代码。
+alwaysApply: true
+---
+
+# UI 先改 Figma
+
+Helios 的界面以这份设计文件为准，不要凭记忆、截图印象或「更好看」在代码里另造一套：
+
+https://www.figma.com/design/nLdvIEk8q7p8exzKcclNQo/helios-design
+
+`fileKey`：`nLdvIEk8q7p8exzKcclNQo`。读、改都走 Figma MCP（`get_metadata` / `get_design_context` / `use_figma`），不要让用户贴截图当源。
+
+纯行为 bug（同一套像素、只修逻辑）不走这条。只要动布局、间距、颜色、字体、组件形态、文案位置或新画面，就要先改 Figma。
+
+## 动手前
+
+1. 在 Figma 里定位对应页面/组件，读当前稿，不要扫现有 React 猜目标长什么样。
+2. 稿上还没有这次改动：先 `use_figma` 改设计文件，对齐后再写 `apps/electron`。
+3. 代码对齐 Figma，不发明节点、token、间距。Figma 没有的画面不要先在代码里长出来。
+
+## 反例
+
+```
+错：先改 Sidebar.tsx 间距，Figma 不动
+对：先改 Figma 侧栏，再把同一套数值落到代码
+```
+
+不要：跳过 Figma 直接「先实现一版」；用 Tailwind 默认值凑合；跟控制台或别的产品抄外观。
