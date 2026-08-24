@@ -96,3 +96,7 @@ apps/eve/        本地 agent。登录后主进程拉起，127.0.0.1:24721
 | 本文 + 相关 [references/](references/see.md) | 解释或改**当前**功能 |
 | [versions/vision.md](versions/vision.md) | 为什么存在、产品边界、已定架构 |
 | [versions/0.x.md](versions/vision.md) | 某能力是否已做、开新版本时的范围 |
+
+## 外部调研
+
+- [Railway `dev.new` 技术方案](railway-dev-new.html)（结案 HTML，不是 Helios 功能合同）

@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Railway dev.new 技术方案（结案）</title>
+  <style>
+    :root {
+      --bg: #f6f5f1;
+      --paper: #fffcf7;
+      --ink: #161513;
+      --muted: #5c5852;
+      --line: #ddd8ce;
+      --accent: #3b5bdb;
+      --ok: #1b7f4e;
+      --warn: #9a6700;
+      --bad: #b42318;
+      --chip: #efeae1;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font: 16px/1.55 "Iowan Old Style", "Palatino Linotype", Palatino, "Songti SC", "Noto Serif SC", serif;
+    }
+    .wrap { max-width: 920px; margin: 0 auto; padding: 32px 24px 80px; }
+    header.hero {
+      padding: 28px 0 20px;
+      border-bottom: 1px solid var(--line);
+    }
+    .kicker {
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    h1 { font-size: 34px; line-height: 1.2; margin: 8px 0 12px; font-weight: 650; }
+    h2 { font-size: 22px; margin: 48px 0 12px; }
+    h3 { font-size: 17px; margin: 28px 0 8px; }
+    p, li { color: var(--ink); }
+    .lede { font-size: 18px; color: var(--muted); max-width: 42em; }
+    nav.toc {
+      position: sticky; top: 0; z-index: 5;
+      background: color-mix(in srgb, var(--bg) 92%, white);
+      border-bottom: 1px solid var(--line);
+      margin: 0 -24px; padding: 10px 24px;
+      display: flex; gap: 8px; flex-wrap: wrap;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 13px;
+    }
+    nav.toc a {
+      color: var(--muted); text-decoration: none;
+      padding: 4px 8px; border: 1px solid transparent; border-radius: 999px;
+    }
+    nav.toc a:hover { color: var(--ink); border-color: var(--line); background: var(--paper); }
+    .callout {
+      border: 1px solid var(--line);
+      background: var(--paper);
+      padding: 14px 16px;
+      margin: 16px 0;
+    }
+    .callout.ok { border-left: 3px solid var(--ok); }
+    .callout.warn { border-left: 3px solid var(--warn); }
+    .callout.info { border-left: 3px solid var(--accent); }
+    .callout strong { display: block; margin-bottom: 4px; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; }
+    table {
+      width: 100%; border-collapse: collapse; font-size: 14.5px;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      margin: 12px 0 20px;
+    }
+    th, td {
+      text-align: left; vertical-align: top;
+      padding: 9px 10px; border-bottom: 1px solid var(--line);
+    }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+    code, pre {
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 12.5px;
+    }
+    code {
+      background: var(--chip); padding: 1px 5px;
+    }
+    pre {
+      background: #1c1b19; color: #f3efe7;
+      padding: 14px 16px; overflow: auto; line-height: 1.45;
+    }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--paper); border: 1px solid var(--line); padding: 16px;
+    }
+    .card h3 { margin-top: 0; }
+    .meta { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; color: var(--muted); }
+    .arch { width: 100%; height: auto; margin: 18px 0; background: var(--paper); border: 1px solid var(--line); }
+    .tag {
+      display: inline-block; font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 11px; padding: 2px 7px; border: 1px solid var(--line); border-radius: 999px;
+      color: var(--muted); margin-right: 6px;
+    }
+    .tag.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, var(--line)); }
+    .tag.warn { color: var(--warn); }
+    footer {
+      margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--line);
+      font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; color: var(--muted);
+    }
+    a { color: var(--accent); }
+    ol.steps { padding-left: 1.3em; }
+    ol.steps li { margin: 8px 0; }
+    .wrong { text-decoration: line-through; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <div class="kicker">结案文档 · 2026-08-19</div>
+      <h1>Railway <code>dev.new</code> 完整技术方案</h1>
+      <p class="lede">
+        结论已经齐了：dev.new 不是「Agent 写完代码再手写 Dockerfile 部署」。
+        它是两台机器——一台常驻 Ubuntu 开发 VM 里跑编码 Agent；一次 <code>ship</code> 只上传源码，由 Railpack 另编生产镜像。
+      </p>
+      <p class="meta">
+        证据：官方长文、Cloud Agents / Sandboxes / Railpack 文档、项目 Pricing Page 的构建日志与线上站点。
+        未公开的实现会单独标出，不当成事实。
+      </p>
+    </header>
+
+    <nav class="toc">
+      <a href="#verdict">结论</a>
+      <a href="#arch">架构</a>
+      <a href="#agents">三种 Agent</a>
+      <a href="#vm">第一台 VM</a>
+      <a href="#ship">发布路径</a>
+      <a href="#runtime">生产底镜像</a>
+      <a href="#loop">一次会话</a>
+      <a href="#evidence">实测</a>
+      <a href="#unknown">未公开</a>
+      <a href="#copy">如何抄</a>
+    </nav>
+
+    <section id="verdict">
+      <h2>1. 结案：三句话</h2>
+      <div class="callout ok">
+        <strong>对的部分</strong>
+        先开一台绑定在用户项目上的 VM，里面预装 Web 开发环境；Agent 在 VM <em>里面</em>写 <code>/app</code>；8080 热更新预览；满意后再发到 Railway。
+      </div>
+      <div class="callout warn">
+        <strong>必须改掉的理解</strong>
+        <span class="wrong">写完打包 → 写 Dockerfile → 部署。</span>
+        实际是 <code>ship</code> 上传源码快照（Pricing Page 这次 2.6 MB，不含 node_modules），Railpack 自动检测并构建。生产底是瘦 Debian，不是那台 Ubuntu 开发机。
+      </div>
+      <table>
+        <thead><tr><th>你原来的说法</th><th>实际机制</th></tr></thead>
+        <tbody>
+          <tr><td>一台 VM / 容器里写代码再部署</td><td>开发 VM 和生产服务是两个运行时。生产是另一次构建。</td></tr>
+          <tr><td>Agent 远程操控这台机器</td><td>编码 Agent 是机内进程，cwd 在 <code>/app</code>，像本地开发者。</td></tr>
+          <tr><td>「那个 Agent」是一个东西</td><td>至少三个产品共用 Agent 这个词，见第 3 节。</td></tr>
+          <tr><td>第一台 VM ≈ railpack-runtime</td><td>开发机是肥 Ubuntu；生产底是 <code>debian:bookworm-slim</code> + 5 个包。</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="arch">
+      <h2>2. 总架构：两平面</h2>
+      <p>左边是给人看草稿的电脑，右边是给用户访问的网站。中间没有 Dockerfile 作者。</p>
+      <svg class="arch" viewBox="0 0 880 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="dev.new 两平面架构">
+        <rect x="0" y="0" width="880" height="280" fill="#fffcf7"/>
+        <text x="24" y="28" fill="#5c5852" font-size="12" font-family="ui-sans-serif, system-ui">草稿平面 · Cloud Agent VM</text>
+        <text x="560" y="28" fill="#5c5852" font-size="12" font-family="ui-sans-serif, system-ui">发布平面 · 普通 Railway 服务</text>
+        <rect x="24" y="44" width="200" height="56" fill="#efeae1" stroke="#ddd8ce"/>
+        <text x="124" y="68" text-anchor="middle" font-size="13" font-family="ui-sans-serif, system-ui">你 · dev.new UI</text>
+        <text x="124" y="86" text-anchor="middle" font-size="11" fill="#5c5852" font-family="ui-sans-serif, system-ui">一句话需求</text>
+        <rect x="248" y="44" width="220" height="56" fill="#efeae1" stroke="#ddd8ce"/>
+        <text x="358" y="68" text-anchor="middle" font-size="13" font-family="ui-sans-serif, system-ui">控制面</text>
+        <text x="358" y="86" text-anchor="middle" font-size="11" fill="#5c5852" font-family="ui-sans-serif, system-ui">建项目 · 开机 · 反代 8080</text>
+        <rect x="24" y="128" width="444" height="120" fill="#fff" stroke="#3b5bdb"/>
+        <text x="246" y="152" text-anchor="middle" font-size="13" font-family="ui-sans-serif, system-ui">Ubuntu 开发 VM · /app + 持久盘</text>
+        <rect x="44" y="168" width="130" height="60" fill="#efeae1" stroke="#ddd8ce"/>
+        <text x="109" y="194" text-anchor="middle" font-size="12" font-family="ui-sans-serif, system-ui">编码 Agent</text>
+        <text x="109" y="212" text-anchor="middle" font-size="10" fill="#5c5852" font-family="ui-sans-serif, system-ui">机内进程</text>
+        <rect x="186" y="168" width="130" height="60" fill="#efeae1" stroke="#ddd8ce"/>
+        <text x="251" y="194" text-anchor="middle" font-size="12" font-family="ui-sans-serif, system-ui">Vite :8080</text>
+        <text x="251" y="212" text-anchor="middle" font-size="10" fill="#5c5852" font-family="ui-sans-serif, system-ui">预览 · 禁止重启</text>
+        <rect x="328" y="168" width="120" height="60" fill="#efeae1" stroke="#ddd8ce"/>
+        <text x="388" y="194" text-anchor="middle" font-size="12" font-family="ui-sans-serif, system-ui">ship</text>
+        <text x="388" y="212" text-anchor="middle" font-size="10" fill="#5c5852" font-family="ui-sans-serif, system-ui">上传源码</text>
+        <rect x="520" y="128" width="336" height="120" fill="#fff" stroke="#161513"/>
+        <text x="688" y="152" text-anchor="middle" font-size="13" font-family="ui-sans-serif, system-ui">服务 web · 另一次构建</text>
+        <rect x="540" y="168" width="140" height="60" fill="#efeae1" stroke="#ddd8ce"/>
+        <text x="610" y="194" text-anchor="middle" font-size="12" font-family="ui-sans-serif, system-ui">Railpack</text>
+        <text x="610" y="212" text-anchor="middle" font-size="10" fill="#5c5852" font-family="ui-sans-serif, system-ui">builder 里编译</text>
+        <rect x="696" y="168" width="140" height="60" fill="#efeae1" stroke="#ddd8ce"/>
+        <text x="766" y="194" text-anchor="middle" font-size="12" font-family="ui-sans-serif, system-ui">runtime + dist</text>
+        <text x="766" y="212" text-anchor="middle" font-size="10" fill="#5c5852" font-family="ui-sans-serif, system-ui">Caddy 伺候静态站</text>
+        <line x1="224" y1="72" x2="248" y2="72" stroke="#161513"/>
+        <line x1="358" y1="100" x2="358" y2="128" stroke="#161513"/>
+        <line x1="388" y1="198" x2="520" y2="198" stroke="#161513"/>
+      </svg>
+      <div class="grid2">
+        <div class="card">
+          <h3>草稿 · Studio / Cloud Agent VM</h3>
+          <p>第一条 prompt 在用户 workspace 建项目，启动完整 VM（和 Sandboxes / Cloud Agents 同一套原语）。<code>/app</code> 预装 Vite + React 19 + Tailwind v4，dev server 已在 8080。磁盘可挂回，空闲休眠。</p>
+        </div>
+        <div class="card">
+          <h3>发布 · 普通服务</h3>
+          <p><code>ship</code> 在同一项目创建/更新服务 <code>web</code>，上传 <code>/app</code>。Railpack 识别、安装、构建、决定启动命令，分配 <code>*.up.railway.app</code>。生产里没有 Agent，没有 Vite。</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="agents">
+      <h2>3. 「Agent」其实是三个产品</h2>
+      <p><code>railway-agent</code> 这个词被复用了。dev.new 用的是机内写代码的那个，不是仪表盘运维机器人。</p>
+      <table>
+        <thead><tr><th>名字</th><th>跑在哪</th><th>干什么</th><th>证据级别</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>编码 Agent<br/><code>railway-agent</code>（长文）</td>
+            <td>第一台 VM 里面</td>
+            <td>改文件、跑命令、Playwright 验预览、可选 ship</td>
+            <td><span class="tag ok">官方长文</span></td>
+          </tr>
+          <tr>
+            <td>Cloud Agents 预装 harness<br/>Claude Code / Codex / Grok CLI</td>
+            <td>同一类 Ubuntu 开发 VM</td>
+            <td>官方文档写明这张开发机预装的编码工具</td>
+            <td><span class="tag ok">Cloud Agents 文档</span></td>
+          </tr>
+          <tr>
+            <td>仪表盘 Railway Agent<br/>CLI <code>railway agent</code> / MCP <code>railway-agent</code></td>
+            <td>控制面，不在 <code>/app</code></td>
+            <td>管项目：日志、数据库、失败诊断。按 Anthropic 原价计 token</td>
+            <td><span class="tag ok">产品文档</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout info">
+        <strong>机内编码 Agent 的实现未开源</strong>
+        能确定：它是 VM 上的进程，像本地程序员。同一镜像还装着 Claude Code / Codex / Grok CLI。它是自研 harness 还是包了一层其中某一个，官方没说，下文标「未公开」。
+      </div>
+    </section>
+
+    <section id="vm">
+      <h2>4. 第一台 VM：环境与机内物</h2>
+      <p>这是 Cloud Agent 虚拟机，不是生产容器。Pricing Page 的系统提示词写成 Ubuntu 24.04，和 <a href="https://docs.railway.com/cloud-agents">Cloud Agents</a> 文档一致。</p>
+      <h3>官方：Cloud Agents 镜像</h3>
+      <table>
+        <thead><tr><th>层</th><th>内容</th></tr></thead>
+        <tbody>
+          <tr><td>OS</td><td>为开发特制的 Ubuntu 镜像（Agent 自述 24.04）</td></tr>
+          <tr><td>工作区</td><td><code>/app</code>，会话从这里开始</td></tr>
+          <tr><td>磁盘</td><td>持久卷。断开休眠停计费，盘还在；再来挂回</td></tr>
+          <tr><td>公网</td><td>固定域名转到 <code>8080</code>，环境变量 <code>$RAILWAY_PUBLIC_DOMAIN</code></td></tr>
+          <tr><td>编码 harness</td><td>Claude Code、Codex、Grok CLI（开机配置）</td></tr>
+          <tr><td>账号工具</td><td>已登录 Railway CLI、git、GitHub CLI</td></tr>
+          <tr><td>语言</td><td>Node.js LTS + pnpm/yarn，Python + uv，mise 按需</td></tr>
+          <tr><td>杂项</td><td>ripgrep、jq、psql、sqlite3、build-essential、Chromium</td></tr>
+        </tbody>
+      </table>
+      <h3>dev.new 在这张机上再烤的一层</h3>
+      <ul>
+        <li>Vite + React 19 + Tailwind v4 + TypeScript，依赖预装</li>
+        <li>Vite 已在 8080 热更新；Agent <strong>禁止</strong>启动/停止/重启它，禁止改 <code>vite.config.ts</code></li>
+        <li><code>AGENTS.md</code>：工作区规则</li>
+        <li><code>inspector/vite-plugin.ts</code> + <code>stamp.ts</code> + <code>protocol.ts</code>：预览点选 → 文件/行号</li>
+        <li>Playwright + Chromium（长文；Cloud Agents 也带 Chromium）</li>
+        <li><code>ship</code>：部署当前工作目录的薄封装</li>
+      </ul>
+      <p>通用 Sandbox 默认镜像另有 git/Node/npm/mise/Docker daemon，以及 Claude Code / Codex / OpenCode / Pi。dev.new 用的是 <strong>同一套 VM 原语 + 特制 Web 模板</strong>，不要和「空白 Debian sandbox」划等号。</p>
+    </section>
+
+    <section id="ship">
+      <h2>5. 发布路径：ship → Railpack，没有 Dockerfile</h2>
+      <p><code>ship</code> 等于「记住服务 ID 的 <code>railway up</code>」：</p>
+      <ol class="steps">
+        <li>第一次在同一项目创建服务（Pricing Page 叫 <code>web</code>）并记住 ID；之后更新同一服务。</li>
+        <li>打包 <code>/app</code> 源码。实测快照 <code>sha256:60925b9d…</code>，<strong>2.6 MB</strong>，未含 node_modules。</li>
+        <li>Railpack 0.36.4 在 <strong>builder</strong> 镜像里检测：Node + npm；Vite 静态站；output = <code>dist</code>。</li>
+        <li>构建：<code>npm install</code> → <code>npm run build</code>（Vite 8.2.1）→ 把 <code>dist</code> 拷进 runtime。</li>
+        <li>启动：<code>caddy run --config /Caddyfile</code>（Caddy 2.11.4 由 mise 在构建层安装后拷入）。</li>
+        <li>分配公网域名。下一轮 ship 更新同一服务。</li>
+      </ol>
+      <p>若应用是带 WebSocket 的长驻服务（长文 FPS demo），Railpack 会走 Node start，而不是 Caddy。检测看源码形态，不看 Studio 模板。</p>
+      <div class="callout info">
+        <strong>预览域名 ≠ 生产域名</strong>
+        Studio VM 自己有公网入口（Agent 用 curl + Host 和 Playwright 打的就是它）。生产是独立服务，例如 <code>web-production-5dc653.up.railway.app</code>。空闲后开发 VM 会睡/回收；生产服务继续在。
+      </div>
+    </section>
+
+    <section id="runtime">
+      <h2>6. 生产底镜像 <code>ghcr.io/railwayapp/railpack-runtime:mise-2026.8.4</code></h2>
+      <p>这是 Railpack <strong>最终容器的底</strong>，不是开发 VM。tag 里的 mise 是版本钉（与 Railpack 0.36.4 锁定的 mise 2026.8.4 对齐），<strong>runtime 里没有 mise</strong>。mise 在 builder 镜像里，构建完丢掉。</p>
+      <pre>FROM debian:bookworm-slim
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update &amp;&amp; apt-get install -y \
+    ca-certificates pkg-config openssl tzdata locales \
+ &amp;&amp; locale-gen   # 打开 en_US.UTF-8</pre>
+      <p>已拉镜像核对（digest <code>sha256:bffb561c270c…</code>，linux/amd64 + arm64）：</p>
+      <table>
+        <thead><tr><th></th><th>runtime 底</th><th>Pricing Page 叠上去的</th></tr></thead>
+        <tbody>
+          <tr><td>OS</td><td>Debian 12 bookworm</td><td>不变</td></tr>
+          <tr><td>用户</td><td>root</td><td>root</td></tr>
+          <tr><td>有</td><td>openssl、pkg-config、ca-certificates、tzdata、locales + slim 自带共 97 包</td><td><code>libatomic1</code>、Caddy 2.11.4、<code>/app/dist</code></td></tr>
+          <tr><td>没有</td><td>mise、Node、Python、Caddy、git、curl、Agent</td><td>生产不跑 Vite / Agent</td></tr>
+          <tr><td>locale</td><td>生成了 en_US.utf8，<strong>未</strong>设 LANG/LC_ALL</td><td>—</td></tr>
+        </tbody>
+      </table>
+      <p>Builder 是另一张肥镜像：<code>ghcr.io/railwayapp/railpack-builder:mise-2026.8.4</code>（<code>buildpack-deps:bookworm-scm</code> + mise + gcc/cmake/libpq-dev 等），不进生产。</p>
+    </section>
+
+    <section id="loop">
+      <h2>7. 一次会话的真实时序</h2>
+      <p>00–07 来自 Pricing Page 站点源码里 Agent 自己写的流水账；前后步骤来自官方与构建日志。</p>
+      <table>
+        <thead><tr><th>步</th><th>动作</th><th>来源</th></tr></thead>
+        <tbody>
+          <tr><td>控制面</td><td>登录 → 建项目 → 启动 VM → 挂卷 → 拷模板 → 拉起 Vite:8080 → Studio 嵌预览</td><td>官方</td></tr>
+          <tr><td>00</td><td>读系统提示词：常驻 Ubuntu、项目已绑定、8080 对外、不要当一次性沙箱重启</td><td>Pricing Page</td></tr>
+          <tr><td>01–02</td><td>读 App.tsx / styles.css / AGENTS.md，确认脚手架和品牌 token</td><td>Pricing Page</td></tr>
+          <tr><td>03–05</td><td>增量改：新增组件，不改 vite.config，不换路由库</td><td>Pricing Page</td></tr>
+          <tr><td>06</td><td>curl + Host 打公网预览 200；Playwright 开真实预览域名截图</td><td>Pricing Page</td></tr>
+          <tr><td>07</td><td>只交 <code>$RAILWAY_PUBLIC_DOMAIN</code>。用户说「上线」才走独立服务</td><td>Pricing Page</td></tr>
+          <tr><td>ship</td><td>上传源码 → Railpack → 生产 URL</td><td>官方 + 构建日志</td></tr>
+        </tbody>
+      </table>
+      <p>Agent 契约（从 AGENTS.md / 系统提示词还原）：预览常在；增量优于重写；自己验证到能展示；发布权在用户。</p>
+    </section>
+
+    <section id="evidence">
+      <h2>8. 实测锚点：Pricing Page</h2>
+      <p class="meta">项目 <code>f4921dd2-666f-4a4c-832f-1396b8055568</code> · 服务 <code>web</code> · 构建 2026-08-15 07:07 UTC · 域名 <a href="https://web-production-5dc653.up.railway.app/">web-production-5dc653.up.railway.app</a></p>
+      <table>
+        <thead><tr><th>项</th><th>值</th></tr></thead>
+        <tbody>
+          <tr><td>Builder</td><td>Railpack 0.36.4 · Metal builder</td></tr>
+          <tr><td>检测</td><td>Node + npm · Vite 静态站 · dist</td></tr>
+          <tr><td>Node</td><td>24.18.1 LTS + npm 11.16.0（mise，构建层）</td></tr>
+          <tr><td>生产 Web</td><td>Caddy 2.11.4</td></tr>
+          <tr><td>生产底</td><td><code>ghcr.io/railwayapp/railpack-runtime:mise-2026.8.4</code></td></tr>
+          <tr><td>Vite</td><td>8.2.1 · 17 modules · CSS 427kB / JS 205kB</td></tr>
+          <tr><td>依赖</td><td>109 npm packages · package-lock 认定 npm</td></tr>
+          <tr><td>Sleep inactive</td><td>true · 用户变量 0</td></tr>
+          <tr><td>边缘</td><td>sin1 · <code>server: railway-hikari</code></td></tr>
+          <tr><td>查询时 Studio</td><td><code>railway sandbox list</code> 为空（已回收）</td></tr>
+        </tbody>
+      </table>
+      <p>线上现在是 Agent 写的「过程说明书」，不是最初四档定价卡。定价页做过（<code>src/components/PricingPage.tsx</code>），后来被叙事页覆盖。这恰好证明：生产是某一次 ship 的静态快照，开发机当时的 8080 才是草稿。</p>
+    </section>
+
+    <section id="unknown">
+      <h2>9. 未公开，不要写成事实</h2>
+      <table>
+        <thead><tr><th>缺口</th><th>已知边界</th></tr></thead>
+        <tbody>
+          <tr><td>Studio 是否就是 Ubuntu 24.04 官方云镜像</td><td>只有 Agent 系统提示词这么说。通用 Sandbox 文档是 Debian。</td></tr>
+          <tr><td><code>railway-agent</code> 源码 / 是否包 Claude Code</td><td>未找到仓库。同一 VM 预装 Claude Code / Codex / Grok CLI。</td></tr>
+          <tr><td>inspector 协议报文</td><td>只看到 vite 插件路径。语义是 DOM → file:line → 下一轮 prompt。</td></tr>
+          <tr><td>ship 认证与服务记忆文件</td><td>行为等于记住服务 ID 的 railway up；2.6 MB 说明没打 node_modules。</td></tr>
+          <tr><td>开发 VM 精确 Dockerfile / digest</td><td>Cloud Agents 只给了能力清单，没有公开配方。</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="copy">
+      <h2>10. 要抄就抄这三块</h2>
+      <p>不要做一个「又能热更新又能当生产」的容器。</p>
+      <ol class="steps">
+        <li><strong>控制面</strong>：开 VM、挂盘到 <code>/app</code>、把 <code>:8080</code> 反代成预览域名、点击映射成 file:line。</li>
+        <li><strong>开发镜像</strong>：Ubuntu + Node 24 + Chromium/Playwright + 机内编码 harness + 预烤 Vite 脚手架。Agent 禁止重启预览进程。空闲停机留盘，不要删 VM。</li>
+        <li><strong>ship</strong>：上传源码（不含 node_modules），用 Railpack/Nixpacks <em>另一次</em>构建。Vite 静态站 → dist + Caddy/nginx；有服务端 → 跑 Node。</li>
+      </ol>
+      <pre># 生产底的等价物就是官方 runtime Dockerfile，不必自研
+FROM debian:bookworm-slim
+# 开发机不要用这张。开发机用 Ubuntu + 工具链 + Agent。</pre>
+    </section>
+
+    <footer>
+      来源：
+      <a href="https://blog.railway.com/p/dev-new">dev.new 长文</a> ·
+      <a href="https://docs.railway.com/cloud-agents">Cloud Agents</a> ·
+      <a href="https://docs.railway.com/sandboxes">Sandboxes</a> ·
+      <a href="https://railpack.com/architecture/overview">Railpack</a> ·
+      <a href="https://github.com/railwayapp/railpack/blob/v0.36.4/images/debian/runtime/Dockerfile">runtime Dockerfile</a> ·
+      Pricing Page 构建日志与
+      <a href="https://web-production-5dc653.up.railway.app/">线上站点</a>。
+      本文只记录已核对事实；未公开实现未当作结论。
+    </footer>
+  </div>
+</body>
+</html>
