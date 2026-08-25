@@ -1,5 +1,5 @@
 ---
-description: 新会话先读 docs/（当前功能 + versions 落地史），再动手。
+description: 新会话先读 docs/index.md，再按任务打开那一两篇。
 alwaysApply: true
 ---
 
@@ -9,18 +9,18 @@ alwaysApply: true
 
 ## 读什么
 
-1. `docs/README.md`：资源模型、两条做事路径、routing、执行规则。再按任务打开 `docs/references/` 里对应的一两篇。
-2. `docs/versions/vision.md`：为什么存在、做/不做、已定架构。动产品边界或架构时必读。
-3. `docs/versions/0.*.md`：按编号从低到高。文首写了「已完成」的是落地史；没写的是正在写的下一版范围。确认某能力是否已做、或要开新版本时再读。
+1. `docs/index.md`：产品是什么、资源模型、routing。再按任务打开对应那一两篇（`chat.md`、`templates.md` 等）。
+2. `docs/versions/vision.md`：为什么存在、做/不做、已定架构。动产品边界或架构时才读。
+3. `docs/versions/0.*.md`：确认某能力是否已做、或开新版本时才读对应那一篇。不要从 0.1 通读。
 
 文件是活文档，以磁盘为准，不要把内容背进别的规则。
 
 ## 读完要知道
 
-- 产品边界：Helios 让 Sealos 更好用的桌面操作台，不是控制台翻版，也不是为做 agent 而做 agent。
-- 当前功能以 `docs/README.md` 和 `docs/references/` 为准。`docs/versions/0.x` 是怎么走到这一步，不是「今天」的拼图。
+- 产品边界：在 Sealos 上做出自己的应用。Helios 是让 Sealos 更好用的桌面操作台。Agent 负责部署、照看、操作账号里的资源。不是控制台翻版，也不是为做 agent 而做 agent。
+- 当前功能以 `docs/index.md` 和它链到的功能篇为准。`docs/versions/0.x` 是怎么走到这一步，不是「今天」的拼图。
 - 新范围先写 `docs/versions/0.x.md`，再改代码。「本版明确不做」不是待办。
-- 架构已定项（Electron 主进程、本地 eve、渲染进程不直连 Sealos）不要另开一条。
+- 功能篇只写是什么和 happy path。Sealos API 对着源码查（`.cursor/rules/sealos-source.mdc`）。对话里怎么操作 Sealos 以 eve 的 use-sealos 为准。
 
 ## 之后
 

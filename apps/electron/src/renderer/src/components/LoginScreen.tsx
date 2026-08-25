@@ -80,7 +80,7 @@ function LoginScreen({ onAuthenticated }: Props): React.JSX.Element {
       <div className="login-brand">
         <img className="login-logo" src={logo} alt="" />
         <h1>Helios</h1>
-        <p>把项目丢进来，剩下的交给 agent。</p>
+        <p>让 Sealos 更好用的桌面操作台。</p>
       </div>
 
       <div className="login-panel">

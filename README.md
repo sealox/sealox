@@ -1,8 +1,8 @@
 # Helios
 
-把项目丢进来，agent 负责部署到 Sealos，一屏看到部署产生的全部资源。
+在 Sealos 上做出自己的应用。Agent 负责部署、照看、操作你账号里的资源。
 
-当前功能：[docs/README.md](docs/README.md)。
+当前功能：[docs/index.md](docs/index.md)。
 为什么存在、边界、架构：[docs/versions/vision.md](docs/versions/vision.md)。
 
 ## 仓库结构
