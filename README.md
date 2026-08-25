@@ -7,12 +7,13 @@
 
 ## 仓库结构
 
-npm workspaces monorepo，两个 app：
+npm workspaces monorepo，三个 app：
 
 ```
 apps/
 ├── electron/   # 桌面端（electron-vite + React + TS）
-└── eve/        # 本地 agent 服务（Vercel eve），部署逻辑的宿主
+├── eve/        # 本地 agent 服务（Vercel eve），部署逻辑的宿主
+└── mobile/     # iOS（Expo）。功能尚未移植，见 docs/mobile.md
 ```
 
 ## 开发
@@ -21,7 +22,8 @@ apps/
 npm install          # 根目录安装全部 workspace 依赖
 npm run dev          # 启动 Electron 桌面端
 npm run dev:eve      # 启动本地 eve agent
-npm run typecheck    # 两个 app 的类型检查
+npm run ios          # 启动 Expo，打开 iOS 模拟器
+npm run typecheck    # 三个 app 的类型检查
 npm run lint         # Electron app 的 eslint
 ```
 

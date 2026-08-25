@@ -1,8 +1,19 @@
 # Helios
 
-在 Sealos 上做出自己的应用。Agent 负责部署、照看、操作你账号里的资源。让 Sealos 更好用的桌面操作台。
+在 Sealos 上做出自己的应用。Agent 负责部署、照看、操作你账号里的资源。让 Sealos 更好用的操作台。
 
 当前功能以本文档为准。只读任务需要的那一两篇。界面以 [Figma](https://www.figma.com/design/nLdvIEk8q7p8exzKcclNQo/helios-design) 为准，文档只写功能，不写壳、布局、像素。对话里怎么操作 Sealos，读 eve 内置 [use-sealos](../apps/eve/agent/skills/use-sealos/SKILL.md)，不要抄进这里。
+
+## 宿主
+
+功能合同对所有宿主同一套。当前实现只在桌面。
+
+| 宿主 | 路径 | 当前 |
+|---|---|---|
+| 桌面 | `apps/electron` | 功能合同的实现 |
+| iOS | `apps/mobile`（Expo） | 只有宿主，功能未移植 |
+
+不做 Android，不做 Expo Web。iOS 细节见 [mobile.md](mobile.md)。
 
 ## 资源模型
 
@@ -42,6 +53,7 @@ Helios 不另造对象。桌面名字对应 Sealos 已有实体，口径与控�
 | 删除 / 重启 / 暂停 / 启动 / 批量 | [operate.md](operate.md) |
 | 登录、授权、工作空间 | [auth.md](auth.md) |
 | 设置（账户、模型 Key、更新） | [settings.md](settings.md) |
+| iOS 宿主 | [mobile.md](mobile.md) |
 
 ## 规则
 
@@ -62,6 +74,7 @@ Helios 不另造对象。桌面名字对应 Sealos 已有实体，口径与控�
 - 源码构建依赖本机已装的 CLI，没有则失败。
 - 日志是按需快照，不是实时流。失败没有结构化诊断页。
 - 存储桶没有详情；应用配置没有表单。
+- iOS 宿主已在仓库，登录和资源面都还没接到这个宿主。
 
 ## 与 vision 的关系
 
