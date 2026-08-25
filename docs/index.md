@@ -2,7 +2,7 @@
 
 在 Sealos 上做出自己的应用。Agent 负责部署、照看、操作你账号里的资源。让 Sealos 更好用的桌面操作台。
 
-当前功能以本文档为准。只读任务需要的那一两篇。界面以 [Figma](https://www.figma.com/design/nLdvIEk8q7p8exzKcclNQo/helios-design) 为准，本文不写壳、布局、像素。`docs/versions/` 是落地史。对话里怎么操作 Sealos，读 eve 内置 [use-sealos](../apps/eve/agent/skills/use-sealos/SKILL.md)，不要抄进这里。
+当前功能以本文档为准。只读任务需要的那一两篇。界面以 [Figma](https://www.figma.com/design/nLdvIEk8q7p8exzKcclNQo/helios-design) 为准，文档只写功能，不写壳、布局、像素。对话里怎么操作 Sealos，读 eve 内置 [use-sealos](../apps/eve/agent/skills/use-sealos/SKILL.md)，不要抄进这里。
 
 ## 资源模型
 
@@ -51,7 +51,7 @@ Helios 不另造对象。桌面名字对应 Sealos 已有实体，口径与控�
 4. **列表和项目详情不展示 secret 明文。** 数据库详情是例外（连接就是那页的工作）；密码默认打码。
 5. **删除弹框确认；重启 / 暂停 / 启动点下去就是。** 批量删除一次确认整批。
 6. **Launchpad 之外的工作负载只读。**
-7. **新范围先写 `docs/versions/0.x.md`，再改代码。** 已完成版本里的能力不要重做。「本版明确不做」不是待办。
+7. **新范围先改进对应功能篇和本文，再改代码。**
 8. **查 Sealos API 对着源码，不发明。** Helios 只消费已有能力。对话部署的决策树在 use-sealos，不要在桌面端重写。
 
 ## 仍敞着的口
@@ -63,12 +63,11 @@ Helios 不另造对象。桌面名字对应 Sealos 已有实体，口径与控�
 - 日志是按需快照，不是实时流。失败没有结构化诊断页。
 - 存储桶没有详情；应用配置没有表单。
 
-## 与 versions 的关系
+## 与 vision 的关系
 
 | 读什么 | 何时 |
 |---|---|
 | 本文 + 任务那一两篇 | 解释或改**当前**功能 |
-| [versions/vision.md](versions/vision.md) | 为什么存在、产品边界、已定架构 |
-| `versions/0.x.md`（打开对应那一篇） | 某能力是否已做、或开新版本时的范围。不要从 0.1 通读 |
+| [versions/vision.md](versions/vision.md) | 为什么存在、产品边界 |
 
-当前包 `0.8.0`。0.1–0.8 都是落地史。没有下一版文件。以后可能做的方向见 [vision.md](versions/vision.md)。
+以后可能做的方向见 [vision.md](versions/vision.md)。
