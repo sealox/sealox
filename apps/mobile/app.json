@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "Helios",
+    "slug": "helios",
+    "version": "0.8.0",
+    "platforms": ["ios"],
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "com.helios.app",
+      "supportsTablet": true
+    }
+  }
+}

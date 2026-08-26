@@ -18,7 +18,7 @@ alwaysApply: true
 
 ## 读完要知道
 
-- 产品边界：在 Sealos 上做出自己的应用。Helios 是让 Sealos 更好用的桌面操作台。Agent 负责部署、照看、操作账号里的资源。不是控制台翻版，也不是为做 agent 而做 agent。
+- 产品边界：在 Sealos 上做出自己的应用。Helios 是让 Sealos 更好用的操作台（桌面 + iOS）。Agent 负责部署、照看、操作账号里的资源。不是控制台翻版，也不是为做 agent 而做 agent。iOS 当前只有宿主，功能未移植，见 `docs/mobile.md`。
 - 当前功能以 `docs/index.md` 和它链到的功能篇为准。
 - 新范围先改进对应功能篇和 index，再改代码。
 - 功能篇只写是什么和 happy path。Sealos API 对着源码查（`.cursor/rules/sealos-source.mdc`）。对话里怎么操作 Sealos 以 eve 的 use-sealos 为准。

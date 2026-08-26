@@ -9,7 +9,7 @@ alwaysApply: true
 
 ## 发之前
 
-1. 根、`apps/electron`、`apps/eve` 三个 `package.json` 的 `version` 必须相同，且就是这次要发出去的 `x.y.z`。
+1. 根、`apps/electron`、`apps/eve`、`apps/mobile` 四个 `package.json` 的 `version` 必须相同，且就是这次要发出去的 `x.y.z`。Mac 包仍只发桌面 dmg。
 2. `--notes` 是给用户看的中文，两三句（绿点浮层 + GitHub Release 同一段）。问用户写什么，不要用 commit 列表充数。
 3. 本机 Apple Silicon + Node 24；`gh` 已登录 `norberia`。
 

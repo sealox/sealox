@@ -2,14 +2,15 @@
   "name": "helios",
   "version": "0.8.0",
   "private": true,
-  "description": "Deploy to Sealos from a desktop app — agent-first.",
+  "description": "Deploy to Sealos — agent-first.",
   "workspaces": [
     "apps/*"
   ],
   "scripts": {
     "dev": "npm run dev -w @helios/electron",
     "dev:eve": "npm run dev -w eve",
-    "typecheck": "npm run typecheck -w @helios/electron && npm run typecheck -w eve",
+    "ios": "npm run ios -w @helios/mobile",
+    "typecheck": "npm run typecheck -w @helios/electron && npm run typecheck -w eve && npm run typecheck -w @helios/mobile",
     "lint": "npm run lint -w @helios/electron",
     "format": "npm run format -w @helios/electron",
     "build:mac": "npm run build:mac -w @helios/electron",
