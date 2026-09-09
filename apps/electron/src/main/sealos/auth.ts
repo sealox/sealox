@@ -90,6 +90,52 @@ interface HttpResult {
   body: unknown
 }
 
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+function stringField(value: unknown, key: string): string | undefined {
+  const result = record(value)?.[key]
+  return typeof result === 'string' && result ? result : undefined
+}
+
+/**
+ * Sealos auth endpoints use HTTP 200 for both success and failures. The
+ * actual status is carried in the envelope's numeric `code` field (for
+ * example, `{ code: 401, message: 'token verify error' }`).
+ */
+export function responseStatus(response: { status: number; body: unknown }): number {
+  const code = record(response.body)?.code
+  if (typeof code === 'number' && code >= 400) return code
+  if (typeof code === 'string' && /^\d+$/.test(code) && Number(code) >= 400) {
+    return Number(code)
+  }
+  return response.status
+}
+
+export function responseMessage(body: unknown): string | undefined {
+  const root = record(body)
+  const data = record(root?.data)
+  for (const value of [root?.message, root?.error, data?.message, data?.error]) {
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return undefined
+}
+
+/** 不同区域版本曾使用 camelCase 和 snake_case 两种应用 token 字段名。 */
+function appTokenFrom(body: unknown): string | undefined {
+  const root = record(body)
+  const data = record(root?.data)
+  return (
+    stringField(data, 'appToken') ??
+    stringField(data, 'app_token') ??
+    stringField(root, 'appToken') ??
+    stringField(root, 'app_token')
+  )
+}
+
 async function postForm(url: string, form: Record<string, string>): Promise<HttpResult> {
   const resp = await fetch(url, {
     method: 'POST',
@@ -173,8 +219,8 @@ export async function saveCredentials(
 }
 
 /**
- * 取应用会话 token；auth.json 里没有（旧登录态）时用 regional_token
- * 对当前工作空间重放一次 namespace/switch 换发并落盘。
+ * 取应用会话 token；auth.json 里没有（旧登录态）时优先用 OAuth token
+ * 重放 regionToken，必要时再用 regional_token 重放 namespace/switch。
  */
 export async function ensureAppToken(): Promise<string> {
   const auth = loadAuthJson()
@@ -188,23 +234,59 @@ export async function ensureAppToken(): Promise<string> {
     throw new Error('当前登录态没有会话 token（可能是直接粘贴的 kubeconfig）。请退出后用账号登录。')
   }
 
+  // AI Proxy 新版 token 通常会随 regionToken 返回。旧登录态仍保留
+  // access_token 时，先无交互地重放一次，避免强制用户重新登录。
+  const accessToken = typeof auth.access_token === 'string' ? auth.access_token : undefined
+  if (accessToken) {
+    try {
+      const regionResp = await requestJson(`${region}/api/auth/regionToken`, {
+        method: 'POST',
+        token: accessToken
+      })
+      const regionData = record(record(regionResp.body)?.data)
+      const refreshedAppToken = appTokenFrom(regionResp.body)
+      const refreshedRegionalToken = stringField(regionData, 'token')
+      const refreshedKubeconfig = stringField(regionData, 'kubeconfig')
+      if (responseStatus(regionResp) === 200 && refreshedAppToken) {
+        auth.app_token = refreshedAppToken
+        if (refreshedRegionalToken) auth.regional_token = refreshedRegionalToken
+        if (refreshedKubeconfig) {
+          await fs.writeFile(KUBECONFIG_PATH, refreshedKubeconfig, { mode: 0o600 })
+          await fs.chmod(KUBECONFIG_PATH, 0o600)
+        }
+        await fs.writeFile(AUTH_PATH, JSON.stringify(auth, null, 2), { mode: 0o600 })
+        await fs.chmod(AUTH_PATH, 0o600)
+        return refreshedAppToken
+      }
+    } catch {
+      // access_token 可能已经过期；继续尝试使用仍有效的 regional_token。
+    }
+  }
+
+  // 某些旧区域只在 namespace/switch 响应里返回 appToken。
   const resp = await requestJson(`${region}/api/auth/namespace/switch`, {
     method: 'POST',
     token: regionalToken,
     json: { ns_uid: workspace.uid }
   })
-  const data = (resp.body as { data?: { token?: string; appToken?: string } })?.data
-  if (resp.status === 401) throw new Error('会话已过期，请退出登录后重新登录')
-  if (resp.status !== 200 || !data?.appToken) {
-    throw new Error(`应用会话 token 换发失败（HTTP ${resp.status}）`)
+  const data = record(resp.body)?.data
+  const switchedAppToken = appTokenFrom(resp.body)
+  const status = responseStatus(resp)
+  if (status === 401) throw new Error('会话已过期，请退出登录后重新登录')
+  if (status !== 200 || !switchedAppToken) {
+    const detail = responseMessage(resp.body)
+    throw new Error(
+      `应用会话 token 换发失败（HTTP ${status}${detail ? `：${detail}` : ''}，响应缺少 appToken）。请退出后重新使用 Sealos 账号登录。`
+    )
   }
 
-  auth.app_token = data.appToken
+  auth.app_token = switchedAppToken
   // switch 同时会轮换 regional token，一并更新避免旧 token 提前失效
-  if (data.token) auth.regional_token = data.token
+  const switchedRegionalToken = stringField(data, 'token')
+  if (switchedRegionalToken) auth.regional_token = switchedRegionalToken
   await fs.writeFile(AUTH_PATH, JSON.stringify(auth, null, 2), { mode: 0o600 })
   await fs.chmod(AUTH_PATH, 0o600)
-  return data.appToken
+  return switchedAppToken
 }
 
 /** app token 失效（401/500）时清掉缓存，下次重新换发 */
@@ -294,38 +376,33 @@ export async function startDeviceLogin(
       method: 'POST',
       token: accessToken
     })
-    const regionData = (
-      regionResp.body as {
-        data?: { token?: string; kubeconfig?: string; appToken?: string }
-      }
-    )?.data
-    if (regionResp.status !== 200 || !regionData?.token || !regionData?.kubeconfig) {
-      throw new Error(`区域 token 交换失败（HTTP ${regionResp.status}）`)
+    const regionData = record(record(regionResp.body)?.data)
+    const appToken = appTokenFrom(regionResp.body)
+    const regionToken = stringField(regionData, 'token')
+    const kubeconfig = stringField(regionData, 'kubeconfig')
+    const regionStatus = responseStatus(regionResp)
+    if (regionStatus !== 200 || !regionToken || !kubeconfig) {
+      const detail = responseMessage(regionResp.body)
+      throw new Error(`区域 token 交换失败（HTTP ${regionStatus}${detail ? `：${detail}` : ''}）`)
     }
 
     let workspace: { uid?: string; id?: string; teamName?: string } | null = null
     const nsResp = await requestJson(`${region}/api/auth/namespace/list`, {
-      token: regionData.token
+      token: regionToken
     })
-    if (nsResp.status === 200) {
+    if (responseStatus(nsResp) === 200) {
       const raw = (nsResp.body as { data?: unknown })?.data
       const namespaces = (
         Array.isArray(raw) ? raw : ((raw as { namespaces?: unknown[] })?.namespaces ?? [])
-      ) as Array<{ uid?: string; id?: string; teamName?: string; nstype?: string }>
-      const chosen = namespaces.find((ns) => ns.nstype === 'private') ?? namespaces[0]
+      ) as Array<{ uid?: string; id?: string; teamName?: string; nstype?: string | number }>
+      const chosen =
+        namespaces.find((ns) => ns.nstype === 'private' || ns.nstype === 1) ?? namespaces[0]
       if (chosen) {
         workspace = { uid: chosen.uid, id: chosen.id, teamName: chosen.teamName }
       }
     }
 
-    await saveCredentials(
-      region,
-      accessToken,
-      regionData.token,
-      regionData.kubeconfig,
-      workspace,
-      regionData.appToken
-    )
+    await saveCredentials(region, accessToken, regionToken, kubeconfig, workspace, appToken)
     emit({ type: 'success', status: getStatus() })
   } catch (err) {
     emit({ type: 'error', message: err instanceof Error ? err.message : String(err) })

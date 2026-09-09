@@ -7,14 +7,20 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "npm run dev -w @helios/electron",
+    "dev": "node apps/desktop/scripts/dev-desktop.mjs",
+    "dev:electron": "npm run dev -w @helios/electron",
     "dev:eve": "npm run dev -w eve",
     "ios": "npm run ios -w @helios/mobile",
-    "typecheck": "npm run typecheck -w @helios/electron && npm run typecheck -w eve && npm run typecheck -w @helios/mobile",
+    "build:backend": "npm run build -w @helios/desktop-backend",
+    "typecheck": "npm run typecheck -w @helios/electron && npm run typecheck -w @helios/desktop-backend && npm run typecheck -w eve && npm run typecheck -w @helios/mobile",
+    "typecheck:flutter": "cd apps/desktop && flutter analyze",
+    "test:desktop": "npm run build:backend && node --test apps/desktop/scripts/*.test.mjs && npm test -w eve && npm test -w @helios/desktop-backend && cd apps/desktop && flutter test",
     "lint": "npm run lint -w @helios/electron",
     "format": "npm run format -w @helios/electron",
-    "build:mac": "npm run build:mac -w @helios/electron",
-    "publish:mac": "node apps/electron/scripts/publish-mac.mjs"
+    "build:mac": "node apps/desktop/scripts/build-desktop.mjs macos",
+    "build:win": "node apps/desktop/scripts/build-desktop.mjs windows",
+    "build:mac:electron": "npm run build:mac -w @helios/electron",
+    "publish:mac:electron": "node apps/electron/scripts/publish-mac.mjs"
   },
   "engines": {
     "node": "24.x"

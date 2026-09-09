@@ -1,5 +1,8 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { defineAgent } from "eve";
+import { installConsoleRedaction } from "./lib/security";
+
+installConsoleRedaction();
 
 const baseURL = process.env["HELIOS_AI_BASE_URL"];
 const apiKey = process.env["HELIOS_AI_KEY"];

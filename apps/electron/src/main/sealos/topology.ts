@@ -35,6 +35,12 @@ function literalMatchesDb(value: string, dbName: string): boolean {
   return value === dbName || value.includes(`${dbName}-`) || value.includes(`${dbName}.`)
 }
 
+/** Service 名只在 DNS/URL 边界上匹配，避免把 api 错认成 my-api。 */
+function literalMatchesService(value: string, serviceName: string): boolean {
+  const escaped = serviceName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(^|[^a-z0-9-])${escaped}($|[^a-z0-9-])`, 'i').test(value)
+}
+
 function matchesBucket(hints: EnvHints, bucket: BucketInfo): boolean {
   const ids = [bucket.name, bucket.bucketName].filter((id): id is string => Boolean(id))
   for (const id of ids) {
@@ -72,7 +78,7 @@ function addLink(links: ProjectLink[], seen: Set<string>, link: ProjectLink): vo
 }
 
 /**
- * 从 workload env 证实应用→库/桶。明文只在主进程里匹配，不进返回值。
+ * 从 workload env 证实应用→应用/库/桶。明文只在主进程里匹配，不进返回值。
  * 一条边都没有且只有一个应用时，连到名下全部库和桶（商店模板常把 host 写在配置文件里）。
  */
 export function inferProjectLinks(
@@ -88,6 +94,11 @@ export function inferProjectLinks(
     const raw = workloadsByName.get(app)
     if (!raw) continue
     const hints = envHints(raw)
+    for (const target of appNames) {
+      if (target !== app && hints.literals.some((value) => literalMatchesService(value, target))) {
+        addLink(links, seen, { app, targetKind: 'service', target })
+      }
+    }
     for (const db of databases) {
       if (workloadUsesDatabase(raw, db.name, db.connSecret)) {
         addLink(links, seen, { app, targetKind: 'database', target: db.name })

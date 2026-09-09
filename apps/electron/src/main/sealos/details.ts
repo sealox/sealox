@@ -529,6 +529,75 @@ interface NamedResource {
   metadata?: { name?: string; labels?: Record<string, string> }
 }
 
+interface PodMetric {
+  metadata?: { name?: string; labels?: Record<string, string> }
+  containers?: Array<{
+    name?: string
+    usage?: { cpu?: string; memory?: string }
+  }>
+}
+
+function cpuCores(value: string | undefined): number | undefined {
+  if (!value) return undefined
+  const match = /^([0-9]+(?:\.[0-9]+)?)(n|u|m)?$/.exec(value.trim())
+  if (!match) return undefined
+  const amount = Number(match[1])
+  const multiplier = match[2] === 'n' ? 1e-9 : match[2] === 'u' ? 1e-6 : match[2] === 'm' ? 1e-3 : 1
+  return Number.isFinite(amount) ? amount * multiplier : undefined
+}
+
+function memoryBytes(value: string | undefined): number | undefined {
+  if (!value) return undefined
+  const match = /^([0-9]+(?:\.[0-9]+)?)([KMGTPE]i|[kKMGTPE])?$/.exec(value.trim())
+  if (!match) return undefined
+  const amount = Number(match[1])
+  const binary = ['Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei'].indexOf(match[2] ?? '')
+  const decimal = ['k', 'K', 'M', 'G', 'T', 'P', 'E'].indexOf(match[2] ?? '')
+  const multiplier = binary >= 0 ? 1024 ** (binary + 1) : decimal >= 0 ? 1000 ** (decimal + 1) : 1
+  return Number.isFinite(amount) ? amount * multiplier : undefined
+}
+
+function resourceUsage(
+  podNames: Set<string>,
+  metrics: PodMetric[],
+  cpuLimit: string | undefined,
+  memoryLimit: string | undefined
+): { cpuPercent?: number; memoryPercent?: number } | undefined {
+  const matching = metrics.filter((metric) => podNames.has(metric.metadata?.name ?? ''))
+  if (matching.length === 0) return undefined
+  let usedCpu = 0
+  let usedMemory = 0
+  let hasCpu = false
+  let hasMemory = false
+  for (const metric of matching) {
+    for (const container of metric.containers ?? []) {
+      const cpu = cpuCores(container.usage?.cpu)
+      const memory = memoryBytes(container.usage?.memory)
+      if (cpu !== undefined) {
+        usedCpu += cpu
+        hasCpu = true
+      }
+      if (memory !== undefined) {
+        usedMemory += memory
+        hasMemory = true
+      }
+    }
+  }
+  const cpuCapacity = cpuCores(cpuLimit)
+  const memoryCapacity = memoryBytes(memoryLimit)
+  const result = {
+    cpuPercent:
+      hasCpu && cpuCapacity && cpuCapacity > 0
+        ? Math.round((usedCpu / (cpuCapacity * matching.length)) * 1000) / 10
+        : undefined,
+    memoryPercent:
+      hasMemory && memoryCapacity && memoryCapacity > 0
+        ? Math.round((usedMemory / (memoryCapacity * matching.length)) * 1000) / 10
+        : undefined
+  }
+  return result.cpuPercent === undefined && result.memoryPercent === undefined ? undefined : result
+}
+
 export async function fetchProjectDetail(name: string): Promise<ProjectDetail> {
   const { kc, namespace } = loadKube()
   const apps = kc.makeApiClient(k8s.AppsV1Api)
@@ -579,7 +648,8 @@ export async function fetchProjectDetail(name: string): Promise<ProjectDetail> {
     roleBindings,
     issuers,
     certificates,
-    appCRs
+    appCRs,
+    podMetrics
   ] = await Promise.all([
     custom
       .getNamespacedCustomObject({
@@ -620,7 +690,16 @@ export async function fetchProjectDetail(name: string): Promise<ProjectDetail> {
     }),
     listCustom('cert-manager.io', 'v1', 'issuers'),
     listCustom('cert-manager.io', 'v1', 'certificates'),
-    listCustom('app.sealos.io', 'v1', 'apps')
+    listCustom('app.sealos.io', 'v1', 'apps'),
+    custom
+      .listNamespacedCustomObject({
+        group: 'metrics.k8s.io',
+        version: 'v1beta1',
+        namespace,
+        plural: 'pods'
+      })
+      .then((body) => (body as { items?: PodMetric[] }).items ?? [])
+      .catch(() => [] as PodMetric[])
   ])
 
   const podItems = pods.items ?? []
@@ -647,7 +726,18 @@ export async function fetchProjectDetail(name: string): Promise<ProjectDetail> {
     .map((workload) => {
       const raw = rawByName.get(workload.name)
       const first = raw ? storeMounts(raw)[0] : undefined
-      return first ? { ...workload, volume: { name: first.name, size: first.size } } : workload
+      const container = raw?.spec?.template?.spec?.containers?.[0]
+      const usage = resourceUsage(
+        new Set(workload.pods.map((pod) => pod.name)),
+        podMetrics,
+        container?.resources?.limits?.['cpu'],
+        container?.resources?.limits?.['memory']
+      )
+      return {
+        ...workload,
+        ...(first ? { volume: { name: first.name, size: first.size } } : {}),
+        ...(usage ? { usage } : {})
+      }
     })
 
   const cronjobInfos: CronJobInfo[] = (cronjobs.items ?? []).map((job) => ({
@@ -689,7 +779,28 @@ export async function fetchProjectDetail(name: string): Promise<ProjectDetail> {
   pushAll('Certificate', certificates)
   pushAll('App', appCRs, () => '桌面入口')
 
-  const databaseDetails = ((clusters ?? []) as KubeBlocksCluster[]).map(databaseDetail)
+  const databaseDetails = ((clusters ?? []) as KubeBlocksCluster[]).map((cluster) => {
+    const detail = databaseDetail(cluster)
+    const component = cluster.spec?.componentSpecs?.[0]
+    const databaseName = cluster.metadata?.name ?? detail.name
+    const metricPods = new Set(
+      podItems
+        .filter(
+          (pod) =>
+            pod.metadata?.labels?.['app.kubernetes.io/instance'] === databaseName ||
+            pod.metadata?.name?.startsWith(`${databaseName}-`)
+        )
+        .map((pod) => pod.metadata?.name ?? '')
+        .filter(Boolean)
+    )
+    const usage = resourceUsage(
+      metricPods,
+      podMetrics,
+      component?.resources?.limits?.cpu,
+      component?.resources?.limits?.memory
+    )
+    return usage ? { ...detail, usage } : detail
+  })
   const bucketInfos = (
     buckets as Array<{
       metadata?: { name?: string; labels?: Record<string, string>; creationTimestamp?: string }

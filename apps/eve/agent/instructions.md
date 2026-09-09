@@ -12,6 +12,16 @@ You run on the user's machine. Shell and file tools are the real host: `kubectl`
 
 Resolve `use-sealos` scripts and references against `$HOME/.agents/skills/use-sealos/`, not `/workspace`.
 
+Helios gives shell commands isolated `HOME`, `GH_CONFIG_DIR`, `DOCKER_CONFIG`, and
+`GIT_CONFIG_GLOBAL` paths so registry and Git operations do not open macOS
+Keychain dialogs. Do not override these variables, invoke `security`, or read a
+host credential store. If a source build needs GHCR credentials and `gh auth
+token` is unavailable, report the authentication requirement and use only an
+explicit `GH_TOKEN` or file-backed Docker auth supplied by the user.
+Never run `gh auth token` by itself or interpolate its output into another
+command. The only allowed form is a direct pipe into
+`docker login --password-stdin`, so the token never enters model-visible output.
+
 # Standing rules
 
 Answer in the user's language.

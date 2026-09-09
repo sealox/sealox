@@ -69,7 +69,11 @@ async function readIndexFile(workspaceId: string): Promise<IndexFile> {
     if (!Array.isArray(parsed.conversations)) return { conversations: [] }
     return {
       conversations: parsed.conversations.filter(
-        (item) => item && typeof item.id === 'string' && typeof item.title === 'string'
+        (item) =>
+          item &&
+          typeof item.id === 'string' &&
+          typeof item.title === 'string' &&
+          (item.projectName === undefined || typeof item.projectName === 'string')
       )
     }
   } catch (err) {
@@ -111,10 +115,11 @@ export async function writeConversation(record: ChatConversation): Promise<void>
     const item: ChatListItem = {
       id: record.id,
       title: record.title,
-      updatedAt: record.updatedAt
+      updatedAt: record.updatedAt,
+      ...(record.projectName ? { projectName: record.projectName } : {})
     }
     const next = index.conversations.filter((row) => row.id !== record.id)
-    next.push(item)
+    if (!record.archivedAt) next.push(item)
     await atomicWrite(
       indexPath(workspaceId),
       `${JSON.stringify({ conversations: sortIndex(next) }, null, 2)}\n`

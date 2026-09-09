@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type {
+  AgentExecutorInfo,
   AgentStatus,
   AppUpdateStatus,
   AiKeyInfo,
@@ -106,9 +107,18 @@ const helios: HeliosApi = {
   saveDeepseekKey: (key: string): Promise<void> =>
     ipcRenderer.invoke('helios:model-save-deepseek', key),
   clearDeepseekKey: (): Promise<void> => ipcRenderer.invoke('helios:model-clear'),
+  getAgentExecutors: (): Promise<AgentExecutorInfo[]> =>
+    ipcRenderer.invoke('helios:agent-executors'),
+  setAgentExecutor: (id: string | null): Promise<void> =>
+    ipcRenderer.invoke('helios:agent-executor-set', id),
   listChats: (): Promise<ChatListItem[]> => ipcRenderer.invoke('helios:chat-list'),
   getChat: (id: string): Promise<ChatConversation | null> =>
     ipcRenderer.invoke('helios:chat-get', id),
+  getOrCreateProjectChat: (
+    projectName: string,
+    projectContext?: string
+  ): Promise<ChatConversation> =>
+    ipcRenderer.invoke('helios:chat-project', projectName, projectContext),
   pickChatFiles: (): Promise<ChatAttachment[]> => ipcRenderer.invoke('helios:chat-pick-files'),
   sendChatMessage: (
     conversationId: string,
@@ -119,6 +129,10 @@ const helios: HeliosApi = {
     ipcRenderer.invoke('helios:chat-cancel', conversationId),
   respondChat: (conversationId: string, responses: ChatInputResponse[]): Promise<void> =>
     ipcRenderer.invoke('helios:chat-respond', conversationId, responses),
+  renameChat: (conversationId: string, title: string): Promise<void> =>
+    ipcRenderer.invoke('helios:chat-rename', conversationId, title),
+  archiveChat: (conversationId: string): Promise<void> =>
+    ipcRenderer.invoke('helios:chat-archive', conversationId),
   deleteChat: (conversationId: string): Promise<void> =>
     ipcRenderer.invoke('helios:chat-delete', conversationId),
   onLoginEvent: (listener: (event: LoginEvent) => void): (() => void) => {

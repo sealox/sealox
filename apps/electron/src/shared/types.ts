@@ -27,6 +27,12 @@ export interface PodInfo {
 
 export type AppStatus = 'Running' | 'Progressing' | 'Stopped' | 'Failed'
 
+export interface ResourceUsage {
+  cpuPercent?: number
+  memoryPercent?: number
+  storagePercent?: number
+}
+
 /** Launchpad 意义上的"应用"：单个 Deployment/StatefulSet 工作负载 */
 export interface AppWorkload {
   name: string
@@ -43,6 +49,8 @@ export interface AppWorkload {
   pods: PodInfo[]
   /** 项目详情拓扑页脚：PVC / volumeClaimTemplates，列表快照不填 */
   volume?: VolumeHint
+  /** 项目拓扑健康判断使用；metrics API 不可用时省略 */
+  usage?: ResourceUsage
 }
 
 export interface DatabaseInfo {
@@ -248,10 +256,10 @@ export interface OtherResource {
   note?: string
 }
 
-/** 应用 → 数据库 / 对象存储。只表示已证实（或单应用回退）的引用，不含明文 */
+/** 应用 → 应用 / 数据库 / 对象存储。只表示已证实（或单应用回退）的引用，不含明文 */
 export interface ProjectLink {
   app: string
-  targetKind: 'database' | 'bucket'
+  targetKind: 'service' | 'database' | 'bucket'
   target: string
 }
 
@@ -263,6 +271,8 @@ export interface DatabaseDetail extends DatabaseInfo {
   /** 连接凭证所在 secret 名（不含明文） */
   connSecret?: string
   createdAt?: string
+  /** 项目拓扑健康判断使用；metrics API 不可用时省略 */
+  usage?: ResourceUsage
 }
 
 /** 集群内 / 公网连接。明文只出现在数据库详情 IPC，不进列表快照 */
@@ -574,6 +584,8 @@ export interface ChatListItem {
   id: string
   title: string
   updatedAt: string
+  /** 由该对话创建或维护的 Sealos Project。 */
+  projectName?: string
 }
 
 export interface ChatConversation {
@@ -584,6 +596,12 @@ export interface ChatConversation {
   streamIndex: number
   messages: ChatMessage[]
   questions?: ChatQuestion[]
+  executorThreads?: Record<string, string>
+  /** 由该对话创建或维护的 Sealos Project。 */
+  projectName?: string
+  /** Project 资源摘要，仅供后台为后续用户消息补充上下文。 */
+  projectContext?: string
+  archivedAt?: string
   createdAt: string
   updatedAt: string
 }
@@ -598,6 +616,7 @@ export type ChatEvent =
   | { type: 'cancelled'; conversationId: string }
   | { type: 'error'; conversationId: string; message: string }
   | { type: 'deleted'; conversationId: string }
+  | { type: 'archived'; conversationId: string }
   | { type: 'index'; workspaceId: string; items: ChatListItem[] }
 
 export type AppUpdatePhase = 'idle' | 'available' | 'downloading' | 'ready' | 'error'
@@ -618,6 +637,15 @@ export interface AppUpdateStatus {
 export interface ModelSettings {
   configured: boolean
   hint?: string
+}
+
+export interface AgentExecutorInfo {
+  id: 'codex' | 'claude' | 'gemini'
+  label: string
+  command: string
+  available: boolean
+  version?: string
+  enabled: boolean
 }
 
 export interface HeliosApi {
@@ -671,8 +699,11 @@ export interface HeliosApi {
   getModelSettings(): Promise<ModelSettings>
   saveDeepseekKey(key: string): Promise<void>
   clearDeepseekKey(): Promise<void>
+  getAgentExecutors(): Promise<AgentExecutorInfo[]>
+  setAgentExecutor(id: string | null): Promise<void>
   listChats(): Promise<ChatListItem[]>
   getChat(id: string): Promise<ChatConversation | null>
+  getOrCreateProjectChat(projectName: string, projectContext?: string): Promise<ChatConversation>
   pickChatFiles(): Promise<ChatAttachment[]>
   sendChatMessage(
     conversationId: string,
@@ -681,6 +712,8 @@ export interface HeliosApi {
   ): Promise<void>
   cancelChat(conversationId: string): Promise<void>
   respondChat(conversationId: string, responses: ChatInputResponse[]): Promise<void>
+  renameChat(conversationId: string, title: string): Promise<void>
+  archiveChat(conversationId: string): Promise<void>
   deleteChat(conversationId: string): Promise<void>
   onLoginEvent(listener: (event: LoginEvent) => void): () => void
   onAgentStatus(listener: (status: AgentStatus) => void): () => void

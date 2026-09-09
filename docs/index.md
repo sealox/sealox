@@ -8,10 +8,11 @@
 
 功能合同对所有宿主同一套。当前实现只在桌面。
 
-| 宿主 | 路径 | 当前 |
-|---|---|---|
-| 桌面 | `apps/electron` | 功能合同的实现 |
-| iOS | `apps/mobile`（Expo） | 只有宿主，功能未移植 |
+| 宿主     | 路径                                    | 当前                                                     |
+| -------- | --------------------------------------- | -------------------------------------------------------- |
+| 桌面     | `apps/desktop` + `apps/desktop-backend` | Flutter macOS / Windows 宿主，共享原 Sealos / Agent 实现 |
+| Electron | `apps/electron`                         | 过渡期宿主与共享业务核心                                 |
+| iOS      | `apps/mobile`（Expo）                   | 只有宿主，功能未移植                                     |
 
 不做 Android，不做 Expo Web。iOS 细节见 [mobile.md](mobile.md)。
 
@@ -19,14 +20,14 @@
 
 Helios 不另造对象。桌面名字对应 Sealos 已有实体，口径与控制台同一套：
 
-| Helios | 是什么 |
-|---|---|
+| Helios   | 是什么                                     |
+| -------- | ------------------------------------------ |
 | 工作空间 | 当前租户。切空间换登录态，进行中的对话丢掉 |
-| 项目 | 一次部署产生的集合：应用 + 数据库 + 存储桶 |
-| 应用 | Launchpad 管理的工作负载 |
-| 数据库 | 托管库。详情能连、能看结构、能对实例动手 |
-| 存储桶 | 只有列表；随项目删除 |
-| 对话 | Helios 自己保存全文；切工作空间按空间过滤 |
+| 项目     | 一次部署产生的集合：应用 + 数据库 + 存储桶 |
+| 应用     | Launchpad 管理的工作负载                   |
+| 数据库   | 托管库。详情能连、能看结构、能对实例动手   |
+| 存储桶   | 只有列表；随项目删除                       |
+| 对话     | Helios 自己保存全文；切工作空间按空间过滤  |
 
 区域是登录时选的那一个集群。**当前版本**不做登录后的区域切换。
 
@@ -41,19 +42,19 @@ Helios 不另造对象。桌面名字对应 Sealos 已有实体，口径与控�
 
 ## Routing
 
-| 意图 | 打开 |
-|---|---|
-| 「开始」对话、历史、停止、提问、附件 | [chat.md](chat.md) |
-| 模板店；点卡片「部署」 | [templates.md](templates.md) |
-| 项目列表、详情、拓扑 | [projects.md](projects.md) |
-| 应用列表、详情 | [apps.md](apps.md) |
+| 意图                                    | 打开                         |
+| --------------------------------------- | ---------------------------- |
+| 「开始」对话、历史、停止、提问、附件    | [chat.md](chat.md)           |
+| 模板店；点卡片「部署」                  | [templates.md](templates.md) |
+| 项目列表、详情、拓扑                    | [projects.md](projects.md)   |
+| 应用列表、详情                          | [apps.md](apps.md)           |
 | 数据库列表、详情、连接、公网、问 Helios | [databases.md](databases.md) |
-| 存储桶 | [storage.md](storage.md) |
-| AI Proxy | [ai-proxy.md](ai-proxy.md) |
-| 删除 / 重启 / 暂停 / 启动 / 批量 | [operate.md](operate.md) |
-| 登录、授权、工作空间 | [auth.md](auth.md) |
-| 设置（账户、模型 Key、更新） | [settings.md](settings.md) |
-| iOS 宿主 | [mobile.md](mobile.md) |
+| 存储桶                                  | [storage.md](storage.md)     |
+| AI Proxy                                | [ai-proxy.md](ai-proxy.md)   |
+| 删除 / 重启 / 暂停 / 启动 / 批量        | [operate.md](operate.md)     |
+| 登录、授权、工作空间                    | [auth.md](auth.md)           |
+| 设置（账户、模型 Key、更新）            | [settings.md](settings.md)   |
+| iOS 宿主                                | [mobile.md](mobile.md)       |
 
 ## 规则
 
@@ -78,9 +79,9 @@ Helios 不另造对象。桌面名字对应 Sealos 已有实体，口径与控�
 
 ## 与 vision 的关系
 
-| 读什么 | 何时 |
-|---|---|
-| 本文 + 任务那一两篇 | 解释或改**当前**功能 |
+| 读什么                                   | 何时                 |
+| ---------------------------------------- | -------------------- |
+| 本文 + 任务那一两篇                      | 解释或改**当前**功能 |
 | [versions/vision.md](versions/vision.md) | 为什么存在、产品边界 |
 
 以后可能做的方向见 [vision.md](versions/vision.md)。

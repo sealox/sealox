@@ -1,8 +1,7 @@
-import { app, BrowserWindow } from 'electron'
 import { spawn, type ChildProcess, execFileSync } from 'child_process'
 import { randomBytes, randomUUID } from 'crypto'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import type {
   AgentStatus,
   ChatActivity,
@@ -16,8 +15,10 @@ import type {
   ChatTraceItem
 } from '../../shared/types'
 import { readDeepseekCredential } from '../model-settings'
+import { getEnabledAgentExecutor } from '../agent-executors'
 import { getStatus } from '../sealos/auth'
 import { ensureHeliosKey } from '../sealos/aiproxy'
+import { fetchResources } from '../sealos/resources'
 import {
   currentWorkspaceId,
   deleteConversation,
@@ -28,9 +29,39 @@ import {
   writeConversation
 } from './chat-store'
 import { readChatFiles } from './chat-files'
+import { desktopHost } from '../desktop-host'
+import {
+  formatProcessExitDetail,
+  formatStartFailure,
+  ProcessOutputTail,
+  redactProcessOutput,
+  safeEveWorkflowEnvironment
+} from './process-output'
+import {
+  rejectCodexRequest,
+  requestCodex,
+  respondCodexRequest,
+  stopCodexAppServer,
+  subscribeCodexThread,
+  type CodexProtocolMessage,
+  type CodexRequestId
+} from './codex-app-server'
 
 const EVE_HOST = '127.0.0.1'
-const EVE_PORT = 24721
+const DEFAULT_EVE_PORT = 24721
+const MIN_EVE_NODE_MAJOR = 24
+
+function configuredEvePort(): number {
+  const raw = process.env.HELIOS_EVE_PORT
+  if (!raw) return DEFAULT_EVE_PORT
+  const port = Number(raw)
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+    throw new Error(`HELIOS_EVE_PORT 必须是 1024 到 65535 之间的整数，当前值：${raw}`)
+  }
+  return port
+}
+
+const EVE_PORT = configuredEvePort()
 const EVE_ORIGIN = `http://${EVE_HOST}:${EVE_PORT}`
 const HEALTH_TIMEOUT_MS = 90_000
 const STOP_TIMEOUT_MS = 4_000
@@ -53,15 +84,30 @@ interface LiveSession {
   lastAssistant: string
   answerByStep: Map<number, string>
   activities: Map<string, ChatActivity>
+  localProcess: ChildProcess | null
+  localCancelRequested: boolean
+  localExecutorId: string | null
+  localTurnId: string | null
+  codexThreadReady: boolean
+  codexUnsubscribe: (() => void) | null
+  codexMessages: Map<string, { index: number; phase: string | null; text: string }>
+  codexThinking: Map<string, { index: number; text: string }>
+  codexRequests: Map<string, PendingCodexRequest>
   record: ChatConversation
+}
+
+interface PendingCodexRequest {
+  rpcId: CodexRequestId
+  method: string
+  params: Record<string, unknown>
+  questionIds: Map<string, string>
+  answers: Map<string, ChatInputResponse>
 }
 
 const live = new Map<string, LiveSession>()
 
 function broadcast(channel: string, payload: unknown): void {
-  for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.isDestroyed()) win.webContents.send(channel, payload)
-  }
+  desktopHost().emit(channel, payload)
 }
 
 function setStatus(next: AgentStatus): void {
@@ -76,7 +122,7 @@ export function getAgentStatus(): AgentStatus {
 const EVE_BASIC_USER = 'helios'
 
 function evePassword(): string {
-  const file = join(app.getPath('userData'), 'eve-local-auth')
+  const file = join(desktopHost().userDataPath, 'eve-local-auth')
   try {
     const existing = readFileSync(file, 'utf8').trim()
     if (existing) return existing
@@ -84,7 +130,7 @@ function evePassword(): string {
     // 首次启动
   }
   const created = randomBytes(32).toString('base64url')
-  mkdirSync(app.getPath('userData'), { recursive: true })
+  mkdirSync(desktopHost().userDataPath, { recursive: true })
   writeFileSync(file, created, { mode: 0o600 })
   return created
 }
@@ -95,9 +141,10 @@ function eveAuthHeaders(extra: Record<string, string> = {}): Record<string, stri
 }
 
 function eveAppRoot(): string {
-  if (app.isPackaged) {
-    const src = join(process.resourcesPath, 'eve')
-    const dest = join(app.getPath('userData'), 'eve-runtime')
+  const host = desktopHost()
+  if (host.isPackaged) {
+    const src = join(host.resourcesPath, 'eve')
+    const dest = join(host.userDataPath, 'eve-runtime')
     const srcStamp = join(src, '.output', 'nitro.json')
     const destStamp = join(dest, '.output', 'nitro.json')
     if (!existsSync(srcStamp)) throw new Error(`打包资源缺少 eve 产物：${srcStamp}`)
@@ -109,7 +156,7 @@ function eveAppRoot(): string {
     }
     return dest
   }
-  const candidates = [join(app.getAppPath(), '..', 'eve'), join(__dirname, '../../../eve')]
+  const candidates = [join(host.appRoot, '..', 'eve'), join(__dirname, '../../../eve')]
   for (const dir of candidates) {
     if (existsSync(join(dir, 'package.json'))) return dir
   }
@@ -117,20 +164,59 @@ function eveAppRoot(): string {
 }
 
 function nodeExecutable(): string {
-  if (app.isPackaged) {
-    const bundled = join(process.resourcesPath, 'node', 'bin', 'node')
+  const host = desktopHost()
+  const candidates: string[] = []
+  if (host.isPackaged) {
+    const bundled =
+      host.platform === 'win32'
+        ? join(host.resourcesPath, 'node', 'node.exe')
+        : join(host.resourcesPath, 'node', 'bin', 'node')
     if (!existsSync(bundled)) throw new Error(`打包资源缺少 Node：${bundled}`)
-    return bundled
+    candidates.push(bundled)
+  } else {
+    // npm_node_execpath comes from the npm process that started the preview.
+    // It can be an older Node than the one exposed by the user's PATH.
+    candidates.push(
+      process.env.HELIOS_NODE_PATH ?? '',
+      process.env.HELIOS_NODE_EXECUTABLE ?? '',
+      process.env.npm_node_execpath ?? ''
+    )
+    if (host.platform === 'darwin') {
+      candidates.push('/usr/local/bin/node', '/opt/homebrew/bin/node')
+    }
+    candidates.push(host.platform === 'win32' ? 'node.exe' : 'node')
   }
-  const fromNpm = process.env.npm_node_execpath
-  if (fromNpm && existsSync(fromNpm)) return fromNpm
-  return 'node'
+
+  const seen = new Set<string>()
+  const rejected: string[] = []
+  for (const executable of candidates) {
+    if (!executable || seen.has(executable)) continue
+    seen.add(executable)
+    try {
+      const version = execFileSync(executable, ['--version'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore']
+      }).trim()
+      const major = Number(/^v?(\d+)/.exec(version)?.[1])
+      if (Number.isInteger(major) && major >= MIN_EVE_NODE_MAJOR) return executable
+      rejected.push(`${executable} (${version || '未知版本'})`)
+    } catch {
+      rejected.push(`${executable}（不可用）`)
+    }
+  }
+  const detail = rejected.length ? `已检查：${rejected.join('，')}` : '未找到 node 可执行文件'
+  throw new Error(
+    `eve 需要 Node.js >=${MIN_EVE_NODE_MAJOR}。${detail}。请安装 Node 24，或设置 HELIOS_NODE_EXECUTABLE 指向兼容的 Node。`
+  )
 }
 
 function eveSpawnArgs(root: string): { args: string[]; extraEnv: NodeJS.ProcessEnv } {
   const password = evePassword()
-  const extraEnv: NodeJS.ProcessEnv = { HELIOS_EVE_PASSWORD: password }
-  if (app.isPackaged) {
+  const extraEnv: NodeJS.ProcessEnv = {
+    HELIOS_EVE_PASSWORD: password,
+    ...safeEveWorkflowEnvironment()
+  }
+  if (desktopHost().isPackaged) {
     extraEnv.HOST = EVE_HOST
     extraEnv.NITRO_HOST = EVE_HOST
     extraEnv.NITRO_PORT = String(EVE_PORT)
@@ -154,6 +240,17 @@ function eveSpawnArgs(root: string): { args: string[]; extraEnv: NodeJS.ProcessE
 
 function killPortListeners(port: number): void {
   try {
+    if (process.platform === 'win32') {
+      const out = execFileSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf8' })
+      const pids = new Set<number>()
+      for (const line of out.split('\n')) {
+        if (!line.includes(`:${port}`) || !/LISTENING/i.test(line)) continue
+        const pid = Number(line.trim().split(/\s+/).at(-1))
+        if (Number.isInteger(pid) && pid > 0 && pid !== process.pid) pids.add(pid)
+      }
+      for (const pid of pids) process.kill(pid)
+      return
+    }
     const out = execFileSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'], {
       encoding: 'utf8'
     })
@@ -168,6 +265,22 @@ function killPortListeners(port: number): void {
     }
   } catch {
     // 没有占用该端口
+  }
+}
+
+function killStaleDevelopmentEve(root: string): void {
+  if (desktopHost().isPackaged || process.platform === 'win32') return
+  try {
+    const output = execFileSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' })
+    const eveCli = join(root, 'node_modules', 'eve', 'bin', 'eve.js')
+    for (const line of output.split('\n')) {
+      const match = /^\s*(\d+)\s+(.+)$/.exec(line)
+      if (!match || !match[2].includes(eveCli) || !/\sdev(?:\s|$)/.test(match[2])) continue
+      const pid = Number(match[1])
+      if (Number.isInteger(pid) && pid > 0 && pid !== process.pid) process.kill(pid, 'SIGTERM')
+    }
+  } catch {
+    // 进程已退出或当前环境不支持 ps。
   }
 }
 
@@ -230,6 +343,13 @@ async function persist(session: LiveSession): Promise<void> {
   await emitIndex(session.workspaceId)
 }
 
+function persistInBackground(session: LiveSession): void {
+  void persist(session).catch((error: unknown) => {
+    const detail = error instanceof Error ? error.message : String(error)
+    console.error(`[agent] persist failed: ${detail}`)
+  })
+}
+
 function lastAssistantMessage(session: LiveSession): ChatMessage | undefined {
   for (let i = session.record.messages.length - 1; i >= 0; i -= 1) {
     if (session.record.messages[i].role === 'assistant') return session.record.messages[i]
@@ -247,6 +367,10 @@ function settleTurn(session: LiveSession, err?: Error): void {
   const waiter = session.turnWaiter
   session.turnWaiter = null
   session.turnBusy = false
+  session.localProcess = null
+  session.localExecutorId = null
+  session.localTurnId = null
+  session.localCancelRequested = false
   if (!waiter) return
   if (err) waiter.reject(err)
   else waiter.resolve()
@@ -259,10 +383,249 @@ function failTurn(session: LiveSession, message: string): void {
     last.error = message
   }
   session.record.questions = undefined
+  session.codexRequests.clear()
   emitChat({ type: 'error', conversationId: session.conversationId, message })
   emitSnapshot(session)
-  void persist(session)
+  persistInBackground(session)
   settleTurn(session, new Error(message))
+}
+
+const CODEX_DEVELOPER_INSTRUCTIONS =
+  '你是 Helios 的本地 Codex 执行器。遵守项目中的 AGENTS.md 和已安装 skills。' +
+  '需要部署、修改或执行命令时展示关键过程并请求必要审批。' +
+  '对于部署操作，每个用户请求只执行一次部署；重试前必须先查询已有资源，禁止重复创建。'
+
+function localExecutorWorkdir(): string {
+  return resolve(desktopHost().appRoot, '../..')
+}
+
+function clearCodexQuestions(session: LiveSession): void {
+  session.codexRequests.clear()
+  session.record.questions = undefined
+}
+
+function completeCancelledTurn(session: LiveSession): void {
+  const last = lastAssistantMessage(session)
+  if (last) last.pending = false
+  session.localTurnId = null
+  clearCodexQuestions(session)
+  emitChat({ type: 'cancelled', conversationId: session.conversationId })
+  emitSnapshot(session)
+  persistInBackground(session)
+  settleTurn(session)
+}
+
+function bindCodexThread(session: LiveSession, threadId: string): void {
+  session.codexUnsubscribe?.()
+  session.codexUnsubscribe = subscribeCodexThread(threadId, {
+    onMessage: (message) => handleCodexMessage(session, message),
+    onExit: (error) => {
+      session.codexThreadReady = false
+      session.localTurnId = null
+      if (session.turnBusy && session.turnWaiter) failTurn(session, error.message)
+    }
+  })
+}
+
+async function ensureCodexThread(
+  session: LiveSession,
+  executor: { command: string },
+  workdir: string
+): Promise<string> {
+  const stored = session.record.executorThreads?.codex
+  if (stored && session.codexThreadReady) return stored
+
+  let threadId: string | null = null
+  if (stored) {
+    try {
+      const resumed = await requestCodex<Record<string, unknown>>(
+        executor.command,
+        'thread/resume',
+        {
+          threadId: stored,
+          cwd: workdir,
+          approvalPolicy: 'on-request',
+          approvalsReviewer: 'user',
+          sandbox: 'workspace-write',
+          developerInstructions: CODEX_DEVELOPER_INSTRUCTIONS
+        },
+        90_000
+      )
+      threadId = asString(asRecord(resumed.thread)?.id) ?? null
+    } catch {
+      threadId = null
+    }
+  }
+
+  if (!threadId) {
+    const started = await requestCodex<Record<string, unknown>>(
+      executor.command,
+      'thread/start',
+      {
+        cwd: workdir,
+        approvalPolicy: 'on-request',
+        approvalsReviewer: 'user',
+        sandbox: 'workspace-write',
+        ephemeral: false,
+        developerInstructions: CODEX_DEVELOPER_INSTRUCTIONS
+      },
+      90_000
+    )
+    threadId = asString(asRecord(started.thread)?.id) ?? null
+  }
+  if (!threadId) throw new Error('Codex app-server 未返回 thread id')
+
+  session.record.executorThreads = { ...session.record.executorThreads, codex: threadId }
+  session.codexThreadReady = true
+  bindCodexThread(session, threadId)
+  return threadId
+}
+
+async function runCodexExecutor(
+  session: LiveSession,
+  executor: { command: string },
+  prompt: string
+): Promise<void> {
+  const workdir = localExecutorWorkdir()
+  resetTurnTrace(session)
+  session.codexMessages.clear()
+  session.codexThinking.clear()
+  session.codexRequests.clear()
+  session.localExecutorId = 'codex'
+  session.localCancelRequested = false
+  const pending = lastAssistantMessage(session)
+  if (pending) pending.text = ''
+  emitChat({ type: 'delta', conversationId: session.conversationId, text: '' })
+  emitActivity(session, {
+    id: 'codex-turn',
+    label: 'Codex',
+    detail: '正在连接本地执行器',
+    status: 'running'
+  })
+
+  const threadId = await ensureCodexThread(session, executor, workdir)
+  emitActivity(session, {
+    id: 'codex-turn',
+    label: 'Codex',
+    detail: '已连接，正在提交任务',
+    status: 'running'
+  })
+  await persist(session)
+  const started = await requestCodex<Record<string, unknown>>(
+    executor.command,
+    'turn/start',
+    {
+      threadId,
+      cwd: workdir,
+      input: [{ type: 'text', text: prompt, text_elements: [] }]
+    },
+    60_000
+  )
+  const turnId = asString(asRecord(started.turn)?.id)
+  if (!turnId) throw new Error('Codex app-server 未返回 turn id')
+  session.localTurnId = turnId
+  emitActivity(session, {
+    id: 'codex-turn',
+    label: 'Codex',
+    detail: '正在执行任务',
+    status: 'running'
+  })
+}
+
+async function runTextExecutor(
+  session: LiveSession,
+  executor: { id: string; label: string; command: string },
+  prompt: string
+): Promise<void> {
+  const instructions =
+    `你是 Helios 的本地 ${executor.label} 执行器。遵守项目中的 AGENTS.md 和已安装 skills。` +
+    `对于部署操作，每个用户请求只执行一次部署；重试前先查询已有资源。\n\n用户请求：\n${prompt}`
+  const workdir = localExecutorWorkdir()
+  resetTurnTrace(session)
+  session.localExecutorId = executor.id
+  session.localCancelRequested = false
+  emitActivity(session, {
+    id: 'local-turn',
+    label: executor.label,
+    detail: '正在启动本地执行器',
+    status: 'running'
+  })
+  let cancelled = false
+  const result = await new Promise<string>((resolveResult, reject) => {
+    const proc = spawn(executor.command, ['-p', instructions], {
+      cwd: workdir,
+      env: process.env,
+      windowsHide: true
+    })
+    session.localProcess = proc
+    const stderr = new ProcessOutputTail(12, 12_000)
+    let output = ''
+    proc.stdout?.on('data', (chunk: Buffer) => {
+      output += chunk.toString()
+      if (output.length > 200_000) output = output.slice(-200_000)
+      const last = lastAssistantMessage(session)
+      if (last) last.text = output
+      emitChat({ type: 'delta', conversationId: session.conversationId, text: output })
+    })
+    proc.stderr?.on('data', (chunk: Buffer) => {
+      stderr.push(chunk.toString())
+      emitActivity(session, {
+        id: 'local-turn',
+        label: executor.label,
+        detail: stderr.summary() || '正在执行',
+        status: 'running'
+      })
+    })
+    proc.once('error', reject)
+    proc.once('close', (code, signal) => {
+      const wasCurrent = session.localProcess === proc
+      session.localProcess = null
+      if (!wasCurrent) {
+        cancelled = true
+        resolveResult(output.trim())
+        return
+      }
+      if (session.localCancelRequested) {
+        cancelled = true
+        completeCancelledTurn(session)
+        resolveResult(output.trim())
+        return
+      }
+      if (code === 0) resolveResult(output.trim())
+      else
+        reject(
+          new Error(
+            stderr.summary() ||
+              `${executor.label} 退出（code=${code ?? 'none'} signal=${signal ?? 'none'}）`
+          )
+        )
+    })
+  })
+  if (cancelled) return
+  const last = lastAssistantMessage(session)
+  if (last) {
+    last.text = result || `${executor.label} 未返回内容`
+    last.pending = false
+  }
+  emitActivity(session, {
+    id: 'local-turn',
+    label: executor.label,
+    detail: '已完成',
+    status: 'done'
+  })
+  emitChat({ type: 'done', conversationId: session.conversationId })
+  emitSnapshot(session)
+  await persist(session)
+  settleTurn(session)
+}
+
+async function runLocalExecutor(
+  session: LiveSession,
+  executor: { id: string; label: string; command: string },
+  prompt: string
+): Promise<void> {
+  if (executor.id === 'codex') return runCodexExecutor(session, executor, prompt)
+  return runTextExecutor(session, executor, prompt)
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -348,7 +711,7 @@ function upsertThinking(session: LiveSession, stepIndex: number, text: string): 
 }
 
 function emitActivity(session: LiveSession, item: ChatActivity): void {
-  const detail = item.detail ? clip(item.detail) : undefined
+  const detail = item.detail ? clip(item.detail, 1_200) : undefined
   const next = { ...item, detail }
   session.activities.set(next.id, next)
   const last = lastAssistantMessage(session)
@@ -360,6 +723,493 @@ function emitActivity(session: LiveSession, item: ChatActivity): void {
   else trace.push(block)
   last.activities = undefined
   emitTrace(session)
+}
+
+function codexItemSummary(item: Record<string, unknown>): Pick<ChatActivity, 'label' | 'detail'> {
+  const type = asString(item.type) ?? 'activity'
+  if (type === 'commandExecution') {
+    return { label: '执行命令', detail: asString(item.command) }
+  }
+  if (type === 'fileChange') {
+    const changes = Array.isArray(item.changes) ? item.changes : []
+    const paths = changes
+      .map((change) => asString(asRecord(change)?.path))
+      .filter((path): path is string => Boolean(path))
+    return { label: '修改文件', detail: paths.join('\n') || '正在准备文件变更' }
+  }
+  if (type === 'mcpToolCall') {
+    const server = asString(item.server)
+    const tool = asString(item.tool) ?? 'tool'
+    return {
+      label: server ? `${server} / ${tool}` : tool,
+      detail: item.arguments === undefined ? undefined : JSON.stringify(item.arguments)
+    }
+  }
+  if (type === 'dynamicToolCall') {
+    return {
+      label: asString(item.tool) ?? '调用工具',
+      detail: item.arguments === undefined ? undefined : JSON.stringify(item.arguments)
+    }
+  }
+  if (type === 'webSearch') return { label: '搜索网页', detail: asString(item.query) }
+  if (type === 'imageView') return { label: '查看图片', detail: asString(item.path) }
+  if (type === 'collabAgentToolCall') {
+    return { label: '协作任务', detail: asString(item.prompt) ?? asString(item.tool) }
+  }
+  if (type === 'subAgentActivity') {
+    return { label: '子任务', detail: asString(item.kind) ?? asString(item.agentPath) }
+  }
+  if (type === 'contextCompaction') return { label: '整理上下文' }
+  return { label: 'Codex', detail: type }
+}
+
+function codexActivityStatus(item: Record<string, unknown>): ChatActivity['status'] {
+  const status = asString(item.status)
+  if (status === 'failed' || status === 'declined') return 'error'
+  if (status === 'inProgress') return 'running'
+  return 'done'
+}
+
+function appendCodexThinking(session: LiveSession, key: string, delta: string): void {
+  let entry = session.codexThinking.get(key)
+  if (!entry) {
+    entry = { index: session.codexThinking.size, text: '' }
+    session.codexThinking.set(key, entry)
+  }
+  entry.text += delta
+  if (entry.text.length > 8_000) entry.text = entry.text.slice(-8_000)
+  upsertThinking(session, entry.index, entry.text)
+}
+
+function updateCodexAnswer(
+  session: LiveSession,
+  itemId: string,
+  delta: string,
+  phase?: string | null,
+  replace = false
+): void {
+  let entry = session.codexMessages.get(itemId)
+  if (!entry) {
+    entry = { index: session.codexMessages.size, phase: phase ?? null, text: '' }
+    session.codexMessages.set(itemId, entry)
+  }
+  if (phase !== undefined) entry.phase = phase
+  entry.text = replace ? delta : entry.text + delta
+  if (entry.phase === 'commentary') {
+    const key = `message:${itemId}`
+    const thinking = session.codexThinking.get(key)
+    if (thinking) {
+      thinking.text = entry.text
+      upsertThinking(session, thinking.index, thinking.text)
+    } else {
+      appendCodexThinking(session, key, entry.text)
+    }
+    return
+  }
+  session.lastAssistant = [...session.codexMessages.values()]
+    .filter((message) => message.phase !== 'commentary')
+    .sort((a, b) => a.index - b.index)
+    .map((message) => message.text.trim())
+    .filter(Boolean)
+    .join('\n\n')
+  const last = lastAssistantMessage(session)
+  if (last) {
+    last.text = session.lastAssistant
+    last.error = undefined
+  }
+  emitChat({
+    type: 'delta',
+    conversationId: session.conversationId,
+    text: session.lastAssistant
+  })
+}
+
+function appendCodexCommandOutput(session: LiveSession, itemId: string, delta: string): void {
+  const current = session.activities.get(itemId)
+  const combined = `${current?.detail ?? ''}\n${delta}`.trim()
+  const detail = combined.length > 1_200 ? `…${combined.slice(-1_199)}` : combined
+  emitActivity(session, {
+    id: itemId,
+    label: current?.label ?? '执行命令',
+    detail,
+    status: 'running'
+  })
+}
+
+function registerCodexRequest(
+  session: LiveSession,
+  rpcId: CodexRequestId,
+  method: string,
+  params: Record<string, unknown>,
+  questions: ChatQuestion[],
+  sourceIds: string[]
+): void {
+  const request: PendingCodexRequest = {
+    rpcId,
+    method,
+    params,
+    questionIds: new Map(),
+    answers: new Map()
+  }
+  questions.forEach((question, index) => {
+    request.questionIds.set(question.requestId, sourceIds[index] ?? question.requestId)
+    session.codexRequests.set(question.requestId, request)
+  })
+  session.record.questions = [...(session.record.questions ?? []), ...questions]
+  emitChat({
+    type: 'question',
+    conversationId: session.conversationId,
+    questions: session.record.questions
+  })
+  persistInBackground(session)
+}
+
+function resolveCodexRequestInUi(session: LiveSession, rpcId: CodexRequestId): void {
+  const requests = new Set(
+    [...session.codexRequests.values()].filter((request) => String(request.rpcId) === String(rpcId))
+  )
+  if (requests.size === 0) return
+  const ids = new Set<string>()
+  for (const request of requests) {
+    for (const publicId of request.questionIds.keys()) {
+      ids.add(publicId)
+      session.codexRequests.delete(publicId)
+    }
+  }
+  session.record.questions = (session.record.questions ?? []).filter(
+    (question) => !ids.has(question.requestId)
+  )
+  if (!session.record.questions.length) session.record.questions = undefined
+  emitSnapshot(session)
+  persistInBackground(session)
+}
+
+function handleCodexRequest(session: LiveSession, message: CodexProtocolMessage): void {
+  if (message.id === undefined || !message.method) return
+  const params = message.params ?? {}
+  const baseId = `codex:${String(message.id)}`
+  if (message.method === 'item/commandExecution/requestApproval') {
+    const command = asString(params.command) ?? '未提供命令'
+    const reason = asString(params.reason)
+    registerCodexRequest(
+      session,
+      message.id,
+      message.method,
+      params,
+      [
+        {
+          requestId: baseId,
+          kind: 'tool-approval',
+          prompt: `${reason ? `${reason}\n\n` : ''}Codex 请求执行命令：\n${command}`,
+          toolName: 'shell',
+          options: [
+            { id: 'accept', label: '允许一次' },
+            { id: 'acceptForSession', label: '本次会话允许' },
+            { id: 'decline', label: '拒绝' }
+          ]
+        }
+      ],
+      [baseId]
+    )
+    return
+  }
+  if (message.method === 'item/fileChange/requestApproval') {
+    registerCodexRequest(
+      session,
+      message.id,
+      message.method,
+      params,
+      [
+        {
+          requestId: baseId,
+          kind: 'tool-approval',
+          prompt: asString(params.reason) ?? 'Codex 请求修改工作区文件',
+          toolName: 'fileChange',
+          options: [
+            { id: 'accept', label: '允许一次' },
+            { id: 'acceptForSession', label: '本次会话允许' },
+            { id: 'decline', label: '拒绝' }
+          ]
+        }
+      ],
+      [baseId]
+    )
+    return
+  }
+  if (message.method === 'item/tool/requestUserInput') {
+    const rawQuestions = Array.isArray(params.questions) ? params.questions : []
+    const questions: ChatQuestion[] = []
+    const sourceIds: string[] = []
+    rawQuestions.forEach((raw, index) => {
+      const question = asRecord(raw)
+      const sourceId = asString(question?.id) ?? String(index)
+      const options = Array.isArray(question?.options)
+        ? question.options
+            .map((rawOption) => asRecord(rawOption))
+            .filter((option): option is Record<string, unknown> => Boolean(option))
+            .map((option) => {
+              const label = asString(option.label) ?? '选项'
+              const description = asString(option.description)
+              return { id: label, label: description ? `${label}：${description}` : label }
+            })
+        : undefined
+      questions.push({
+        requestId: `${baseId}:${sourceId}`,
+        kind: 'question',
+        prompt: asString(question?.question) ?? asString(question?.header) ?? '需要你的回复',
+        options,
+        allowFreeform: question?.isOther === true || !options?.length
+      })
+      sourceIds.push(sourceId)
+    })
+    if (questions.length > 0) {
+      registerCodexRequest(session, message.id, message.method, params, questions, sourceIds)
+    } else {
+      rejectCodexRequest(message.id, 'Codex 提问中没有可显示的问题')
+    }
+    return
+  }
+  if (message.method === 'item/permissions/requestApproval') {
+    registerCodexRequest(
+      session,
+      message.id,
+      message.method,
+      params,
+      [
+        {
+          requestId: baseId,
+          kind: 'tool-approval',
+          prompt: asString(params.reason) ?? 'Codex 请求额外的文件或网络权限',
+          toolName: 'permissions',
+          options: [
+            { id: 'accept-turn', label: '仅本轮允许' },
+            { id: 'accept-session', label: '本次会话允许' },
+            { id: 'decline', label: '拒绝' }
+          ]
+        }
+      ],
+      [baseId]
+    )
+    return
+  }
+  if (message.method === 'mcpServer/elicitation/request') {
+    registerCodexRequest(
+      session,
+      message.id,
+      message.method,
+      params,
+      [
+        {
+          requestId: baseId,
+          kind: 'question',
+          prompt: asString(params.message) ?? '外部工具需要你的输入',
+          options: [
+            { id: 'decline', label: '拒绝' },
+            { id: 'cancel', label: '取消' }
+          ],
+          allowFreeform: params.mode !== 'url',
+          toolName: asString(params.serverName)
+        }
+      ],
+      [baseId]
+    )
+    return
+  }
+
+  rejectCodexRequest(message.id, `Helios 暂不支持 Codex 请求：${message.method}`)
+  emitActivity(session, {
+    id: `codex-request-${String(message.id)}`,
+    label: 'Codex 交互',
+    detail: `不支持的请求：${message.method}`,
+    status: 'error'
+  })
+}
+
+function handleCodexItemStarted(session: LiveSession, params: Record<string, unknown>): void {
+  const item = asRecord(params.item)
+  if (!item) return
+  const itemId = asString(item.id)
+  const type = asString(item.type)
+  if (!itemId || !type || type === 'userMessage') return
+  if (type === 'agentMessage') {
+    const phase = asString(item.phase) ?? null
+    session.codexMessages.set(itemId, {
+      index: session.codexMessages.size,
+      phase,
+      text: asString(item.text) ?? ''
+    })
+    return
+  }
+  if (type === 'reasoning' || type === 'plan') return
+  emitActivity(session, {
+    id: itemId,
+    status: 'running',
+    ...codexItemSummary(item)
+  })
+}
+
+function handleCodexItemCompleted(session: LiveSession, params: Record<string, unknown>): void {
+  const item = asRecord(params.item)
+  if (!item) return
+  const itemId = asString(item.id)
+  const type = asString(item.type)
+  if (!itemId || !type || type === 'userMessage') return
+  if (type === 'agentMessage') {
+    updateCodexAnswer(
+      session,
+      itemId,
+      typeof item.text === 'string' ? item.text : '',
+      asString(item.phase) ?? null,
+      true
+    )
+    return
+  }
+  if (type === 'reasoning' || type === 'plan') return
+  const summary = codexItemSummary(item)
+  const aggregated = asString(item.aggregatedOutput)
+  emitActivity(session, {
+    id: itemId,
+    label: summary.label,
+    detail: aggregated ? `${summary.detail ?? ''}\n${aggregated}`.trim() : summary.detail,
+    status: codexActivityStatus(item)
+  })
+}
+
+function finishCodexTurn(session: LiveSession, params: Record<string, unknown>): void {
+  if (!session.turnWaiter) return
+  const turn = asRecord(params.turn)
+  const status = asString(turn?.status) ?? 'completed'
+  session.localTurnId = null
+  clearCodexQuestions(session)
+  if (status === 'interrupted') {
+    completeCancelledTurn(session)
+    return
+  }
+  if (status === 'failed') {
+    const error = asRecord(turn?.error)
+    failTurn(session, asString(error?.message) ?? 'Codex 执行失败')
+    return
+  }
+  const last = lastAssistantMessage(session)
+  if (last) {
+    last.pending = false
+    if (!last.text.trim()) last.text = 'Codex 已完成任务，但没有返回说明。'
+  }
+  emitActivity(session, {
+    id: 'codex-turn',
+    label: 'Codex',
+    detail: '已完成',
+    status: 'done'
+  })
+  emitChat({ type: 'done', conversationId: session.conversationId })
+  emitSnapshot(session)
+  persistInBackground(session)
+  settleTurn(session)
+}
+
+function handleCodexMessage(session: LiveSession, message: CodexProtocolMessage): void {
+  if (message.id !== undefined && message.method) {
+    handleCodexRequest(session, message)
+    return
+  }
+  const method = message.method
+  const params = message.params ?? {}
+  const eventTurnId = asString(params.turnId) ?? asString(asRecord(params.turn)?.id)
+  if (session.localTurnId && eventTurnId && eventTurnId !== session.localTurnId) return
+
+  switch (method) {
+    case 'turn/started': {
+      if (eventTurnId) session.localTurnId = eventTurnId
+      const last = lastAssistantMessage(session)
+      if (last) last.text = ''
+      emitActivity(session, {
+        id: 'codex-turn',
+        label: 'Codex',
+        detail: '开始执行',
+        status: 'running'
+      })
+      break
+    }
+    case 'turn/plan/updated': {
+      const plan = Array.isArray(params.plan) ? params.plan : []
+      plan.forEach((raw, index) => {
+        const step = asRecord(raw)
+        const state = asString(step?.status)
+        emitActivity(session, {
+          id: `codex-plan-${index}`,
+          label: `计划 ${index + 1}/${plan.length}`,
+          detail: asString(step?.step) ?? '未命名步骤',
+          status: state === 'completed' ? 'done' : 'running'
+        })
+      })
+      break
+    }
+    case 'item/started':
+      handleCodexItemStarted(session, params)
+      break
+    case 'item/completed':
+      handleCodexItemCompleted(session, params)
+      break
+    case 'item/agentMessage/delta': {
+      const itemId = asString(params.itemId)
+      if (itemId && typeof params.delta === 'string') {
+        updateCodexAnswer(session, itemId, params.delta)
+      }
+      break
+    }
+    case 'item/reasoning/summaryTextDelta':
+    case 'item/reasoning/textDelta': {
+      const itemId = asString(params.itemId)
+      const index = typeof params.summaryIndex === 'number' ? params.summaryIndex : 0
+      if (itemId && typeof params.delta === 'string') {
+        appendCodexThinking(session, `reasoning:${itemId}:${index}`, params.delta)
+      }
+      break
+    }
+    case 'item/commandExecution/outputDelta': {
+      const itemId = asString(params.itemId)
+      if (itemId && typeof params.delta === 'string') {
+        appendCodexCommandOutput(session, itemId, params.delta)
+      }
+      break
+    }
+    case 'item/fileChange/patchUpdated': {
+      const itemId = asString(params.itemId)
+      if (itemId) {
+        handleCodexItemStarted(session, {
+          item: { id: itemId, type: 'fileChange', changes: params.changes }
+        })
+      }
+      break
+    }
+    case 'serverRequest/resolved': {
+      const requestId = params.requestId
+      if (typeof requestId === 'string' || typeof requestId === 'number') {
+        resolveCodexRequestInUi(session, requestId)
+      }
+      break
+    }
+    case 'error': {
+      const error = asRecord(params.error)
+      const detail = asString(error?.message) ?? 'Codex 执行出错'
+      if (params.willRetry === true) {
+        emitActivity(session, {
+          id: 'codex-retry',
+          label: 'Codex 正在重试',
+          detail,
+          status: 'running'
+        })
+      } else if (session.turnWaiter) {
+        failTurn(session, detail)
+      }
+      break
+    }
+    case 'turn/completed':
+      finishCodexTurn(session, params)
+      break
+    default:
+      break
+  }
 }
 
 function handleActionsRequested(
@@ -492,7 +1342,7 @@ function handleStreamEvent(
       session.record.questions = undefined
       emitChat({ type: 'cancelled', conversationId: session.conversationId })
       emitSnapshot(session)
-      void persist(session)
+      persistInBackground(session)
       settleTurn(session)
       break
     }
@@ -507,7 +1357,7 @@ function handleStreamEvent(
         emitChat({ type: 'done', conversationId: session.conversationId })
       }
       emitSnapshot(session)
-      void persist(session)
+      persistInBackground(session)
       settleTurn(session)
       break
     }
@@ -664,6 +1514,12 @@ async function postReset(sessionId: string): Promise<void> {
 }
 
 function makeLive(record: ChatConversation): LiveSession {
+  const pending = record.messages.at(-1)
+  if (record.eveSessionId === null && pending?.role === 'assistant' && pending.pending) {
+    pending.pending = false
+    pending.error = pending.error ?? '上一次本地执行已中断，请重新发送任务。'
+    record.questions = undefined
+  }
   return {
     conversationId: record.id,
     workspaceId: record.workspaceId,
@@ -675,6 +1531,15 @@ function makeLive(record: ChatConversation): LiveSession {
     lastAssistant: '',
     answerByStep: new Map(),
     activities: new Map(),
+    localProcess: null,
+    localCancelRequested: false,
+    localExecutorId: null,
+    localTurnId: null,
+    codexThreadReady: false,
+    codexUnsubscribe: null,
+    codexMessages: new Map(),
+    codexThinking: new Map(),
+    codexRequests: new Map(),
     record
   }
 }
@@ -737,7 +1602,86 @@ export async function getChat(id: string): Promise<ChatConversation | null> {
   const existing = live.get(id)
   if (existing && existing.workspaceId === workspaceId) return cloneRecord(existing.record)
   const record = await readConversation(workspaceId, id)
-  return record ? cloneRecord(record) : null
+  if (!record) return null
+  const session = makeLive(record)
+  live.set(id, session)
+  persistInBackground(session)
+  return cloneRecord(session.record)
+}
+
+export async function getOrCreateProjectChat(
+  projectName: string,
+  projectContext?: string
+): Promise<ChatConversation> {
+  const normalized = projectName.trim()
+  if (!normalized) throw new Error('项目名称不能为空')
+  const context = projectContext?.trim()
+  const workspaceId = currentWorkspaceId()
+  const existing = (await listConversations(workspaceId)).find(
+    (item) => item.projectName === normalized
+  )
+  if (existing) {
+    const record = await getChat(existing.id)
+    if (record) {
+      if (context && record.projectContext !== context) {
+        record.projectContext = context
+        const session = await hydrate(record.id)
+        session.record.projectContext = context
+        await persist(session)
+      }
+      return record
+    }
+  }
+  const now = new Date().toISOString()
+  const record: ChatConversation = {
+    id: randomUUID(),
+    title: `维护 ${normalized}`,
+    workspaceId,
+    eveSessionId: null,
+    streamIndex: 0,
+    messages: [],
+    projectName: normalized,
+    ...(context ? { projectContext: context } : {}),
+    createdAt: now,
+    updatedAt: now
+  }
+  const session = makeLive(record)
+  live.set(record.id, session)
+  await persist(session)
+  emitSnapshot(session)
+  return cloneRecord(record)
+}
+
+function messageWithProjectContext(record: ChatConversation, text: string): string {
+  const context = record.projectContext?.trim()
+  if (!record.projectName || !context) return text
+  return [
+    `当前维护的 Sealos Project：${record.projectName}。`,
+    `项目摘要（仅作上下文，不向用户展示）：${context}`,
+    '高风险操作（删除、暂停、公开暴露、覆盖数据）必须先说明影响并等待确认。',
+    '',
+    `用户当前请求：${text}`
+  ].join('\n')
+}
+
+function mayCreateProject(text: string): boolean {
+  return /部署|deploy|创建.{0,8}(项目|project)|从应用商店|模板/.test(text)
+}
+
+async function linkCreatedProject(session: LiveSession, before: Set<string> | null): Promise<void> {
+  if (!before || session.record.projectName) return
+  try {
+    const after = await fetchResources()
+    const created = after.projects
+      .map((project) => project.name)
+      .filter((name) => !before.has(name))
+    if (created.length !== 1 || !created[0]) return
+    session.record.projectName = created[0]
+    await persist(session)
+    emitSnapshot(session)
+  } catch {
+    // 项目资源暂未就绪或短暂网络失败时，不影响对话本身。
+  }
 }
 
 export async function sendChatMessage(
@@ -748,10 +1692,16 @@ export async function sendChatMessage(
   const trimmed = text.trim()
   if (!trimmed && attachments.length === 0) throw new Error('消息不能为空')
   if (!isConversationId(conversationId)) throw new Error('对话 id 不合法')
-  if (status.state !== 'ready') {
+  const executor = await getEnabledAgentExecutor()
+  if (!executor && status.state !== 'ready') {
     throw new Error(status.detail || 'AI 服务还没准备好')
   }
   const workspaceId = currentWorkspaceId()
+  const projectsBefore = mayCreateProject(trimmed)
+    ? await fetchResources()
+        .then((snapshot) => new Set(snapshot.projects.map((project) => project.name)))
+        .catch(() => null)
+    : null
   let session = live.get(conversationId)
   if (session && session.workspaceId !== workspaceId) {
     throw new Error('对话不属于当前工作空间')
@@ -775,11 +1725,12 @@ export async function sendChatMessage(
   }
   if (session.turnBusy) throw new Error('上一轮还在回复')
   const files = attachments.length > 0 ? await readChatFiles(attachments) : []
+  const textWithContext = messageWithProjectContext(session.record, trimmed)
   const eveMessage: EveMessage =
     files.length === 0
-      ? trimmed
+      ? textWithContext
       : [
-          ...(trimmed ? [{ type: 'text' as const, text: trimmed }] : []),
+          ...(textWithContext ? [{ type: 'text' as const, text: textWithContext }] : []),
           ...files.map((file) => ({
             type: 'file' as const,
             data: file.dataUrl,
@@ -813,11 +1764,20 @@ export async function sendChatMessage(
     try {
       emitSnapshot(session)
       await persist(session)
-      await ensureEveSession(session, eveMessage, files.length > 0 ? 120_000 : 30_000)
+      if (executor) {
+        if (files.length > 0) throw new Error('本地执行器暂不支持附件')
+        const pending = lastAssistantMessage(session)
+        if (pending) pending.text = `正在由 ${executor.label} 执行…`
+        emitSnapshot(session)
+        await runLocalExecutor(session, executor, textWithContext)
+      } else {
+        await ensureEveSession(session, eveMessage, files.length > 0 ? 120_000 : 30_000)
+      }
     } catch (err) {
       failTurn(session, err instanceof Error ? err.message : String(err))
     }
     await settled
+    await linkCreatedProject(session, projectsBefore)
   } finally {
     session.turnBusy = false
   }
@@ -825,8 +1785,98 @@ export async function sendChatMessage(
 
 export async function cancelChat(conversationId: string): Promise<void> {
   const session = live.get(conversationId)
-  if (!session?.eveSessionId) throw new Error('没有进行中的回复')
+  if (!session) throw new Error('没有进行中的回复')
+  const codexThreadId = session.record.executorThreads?.codex
+  if (session.localExecutorId === 'codex' && codexThreadId && session.localTurnId) {
+    session.localCancelRequested = true
+    await requestCodex('codex', 'turn/interrupt', {
+      threadId: codexThreadId,
+      turnId: session.localTurnId
+    })
+    return
+  }
+  if (session.localProcess && session.localProcess.exitCode === null) {
+    session.localCancelRequested = true
+    session.localProcess.kill('SIGTERM')
+    return
+  }
+  if (!session.eveSessionId) throw new Error('没有进行中的回复')
   await postCancel(session.eveSessionId)
+}
+
+function codexRequestResult(request: PendingCodexRequest): unknown {
+  const first = request.answers.values().next().value as ChatInputResponse | undefined
+  if (request.method === 'item/commandExecution/requestApproval') {
+    return { decision: first?.optionId ?? 'decline' }
+  }
+  if (request.method === 'item/fileChange/requestApproval') {
+    return { decision: first?.optionId ?? 'decline' }
+  }
+  if (request.method === 'item/tool/requestUserInput') {
+    const answers: Record<string, { answers: string[] }> = {}
+    for (const [publicId, sourceId] of request.questionIds) {
+      const response = request.answers.get(publicId)
+      const answer = response?.text ?? response?.optionId
+      answers[sourceId] = { answers: answer ? [answer] : [] }
+    }
+    return { answers }
+  }
+  if (request.method === 'item/permissions/requestApproval') {
+    const requested = asRecord(request.params.permissions)
+    const permissions: Record<string, unknown> = {}
+    if (requested?.network) permissions.network = requested.network
+    if (requested?.fileSystem) permissions.fileSystem = requested.fileSystem
+    const decision = first?.optionId ?? 'decline'
+    return {
+      permissions: decision === 'decline' ? {} : permissions,
+      scope: decision === 'accept-session' ? 'session' : 'turn'
+    }
+  }
+  if (request.method === 'mcpServer/elicitation/request') {
+    const action = first?.optionId ?? (first?.text ? 'accept' : 'decline')
+    return {
+      action,
+      content: action === 'accept' ? (first?.text ?? null) : null,
+      _meta: null
+    }
+  }
+  throw new Error(`不支持的 Codex 请求：${request.method}`)
+}
+
+async function respondToCodex(session: LiveSession, responses: ChatInputResponse[]): Promise<void> {
+  const requests = new Set<PendingCodexRequest>()
+  for (const response of responses) {
+    const request = session.codexRequests.get(response.requestId)
+    if (!request) throw new Error('Codex 交互请求已失效')
+    request.answers.set(response.requestId, response)
+    requests.add(request)
+  }
+
+  const answeredIds = new Set(responses.map((response) => response.requestId))
+  session.record.questions = (session.record.questions ?? []).filter(
+    (question) => !answeredIds.has(question.requestId)
+  )
+  for (const request of requests) {
+    const complete = [...request.questionIds.keys()].every((id) => request.answers.has(id))
+    if (!complete) continue
+    respondCodexRequest(request.rpcId, codexRequestResult(request))
+    for (const publicId of request.questionIds.keys()) {
+      session.codexRequests.delete(publicId)
+      session.record.questions = (session.record.questions ?? []).filter(
+        (question) => question.requestId !== publicId
+      )
+    }
+  }
+  if (!session.record.questions?.length) session.record.questions = undefined
+  emitSnapshot(session)
+  if (session.record.questions?.length) {
+    emitChat({
+      type: 'question',
+      conversationId: session.conversationId,
+      questions: session.record.questions
+    })
+  }
+  await persist(session)
 }
 
 export async function respondChat(
@@ -834,10 +1884,14 @@ export async function respondChat(
   responses: ChatInputResponse[]
 ): Promise<void> {
   if (responses.length === 0) throw new Error('没有作答')
+  const session = await hydrate(conversationId)
+  if (responses.some((response) => session.codexRequests.has(response.requestId))) {
+    await respondToCodex(session, responses)
+    return
+  }
   if (status.state !== 'ready') {
     throw new Error(status.detail || 'AI 服务还没准备好')
   }
-  const session = await hydrate(conversationId)
   if (session.turnBusy) throw new Error('上一轮还在回复')
   const pending = session.record.questions
   if (!pending?.length) throw new Error('当前没有待回答的问题')
@@ -874,6 +1928,19 @@ export async function deleteChat(conversationId: string): Promise<void> {
   const session = live.get(conversationId)
   if (session) {
     closeStream(session)
+    session.codexUnsubscribe?.()
+    session.codexUnsubscribe = null
+    if (session.localExecutorId === 'codex' && session.localTurnId) {
+      const threadId = session.record.executorThreads?.codex
+      if (threadId) {
+        void requestCodex('codex', 'turn/interrupt', {
+          threadId,
+          turnId: session.localTurnId
+        }).catch(() => undefined)
+      }
+    }
+    if (session.localProcess?.exitCode === null) session.localProcess.kill('SIGTERM')
+    session.localProcess = null
     if (session.turnWaiter) {
       session.turnWaiter.reject(new Error('对话已删除'))
       session.turnWaiter = null
@@ -882,7 +1949,11 @@ export async function deleteChat(conversationId: string): Promise<void> {
     if (session.eveSessionId) {
       const eveId = session.eveSessionId
       void postCancel(eveId).catch(() => undefined)
-      void postReset(eveId)
+      // 删除对话时 Eve 可能已经退出；不要让后台 reset rejection 终止 Node 24 sidecar。
+      void postReset(eveId).catch((error: unknown) => {
+        const detail = error instanceof Error ? error.message : String(error)
+        console.error(`[agent] reset after delete failed: ${detail}`)
+      })
     }
     live.delete(conversationId)
   }
@@ -891,11 +1962,34 @@ export async function deleteChat(conversationId: string): Promise<void> {
   await emitIndex(workspaceId)
 }
 
+export async function renameChat(conversationId: string, title: string): Promise<void> {
+  const nextTitle = title.replace(/\s+/g, ' ').trim()
+  if (!nextTitle) throw new Error('对话标题不能为空')
+  const session = await hydrate(conversationId)
+  if (session.turnBusy) throw new Error('正在生成回复，暂时不能重命名')
+  session.record.title = titleFromMessage(nextTitle)
+  emitSnapshot(session)
+  await persist(session)
+}
+
+export async function archiveChat(conversationId: string): Promise<void> {
+  const session = await hydrate(conversationId)
+  if (session.turnBusy) throw new Error('正在生成回复，暂时不能归档')
+  closeStream(session)
+  session.record.archivedAt = new Date().toISOString()
+  session.record.updatedAt = session.record.archivedAt
+  await writeConversation(session.record)
+  live.delete(conversationId)
+  emitChat({ type: 'archived', conversationId })
+  await emitIndex(session.workspaceId)
+}
+
 function dropEveBindings(): void {
   for (const session of live.values()) {
     closeStream(session)
     session.eveSessionId = null
     session.record.eveSessionId = null
+    if (session.localExecutorId) continue
     if (session.turnWaiter) {
       const last = lastAssistantMessage(session)
       if (last?.pending) {
@@ -904,10 +1998,38 @@ function dropEveBindings(): void {
       }
       session.record.questions = undefined
       emitSnapshot(session)
-      void persist(session)
+      persistInBackground(session)
       session.turnWaiter.reject(new Error('AI 服务已停止'))
       session.turnWaiter = null
     }
+    session.turnBusy = false
+  }
+}
+
+function dropLocalBindings(): void {
+  for (const session of live.values()) {
+    session.codexUnsubscribe?.()
+    session.codexUnsubscribe = null
+    session.codexThreadReady = false
+    session.localTurnId = null
+    session.localCancelRequested = true
+    if (session.localProcess?.exitCode === null) session.localProcess.kill('SIGTERM')
+    session.localProcess = null
+    session.codexRequests.clear()
+    if (!session.localExecutorId) continue
+    if (session.turnWaiter) {
+      const last = lastAssistantMessage(session)
+      if (last?.pending) {
+        last.pending = false
+        last.error = last.error ?? '本地执行器已停止'
+      }
+      session.record.questions = undefined
+      emitSnapshot(session)
+      persistInBackground(session)
+      session.turnWaiter.reject(new Error('本地执行器已停止'))
+      session.turnWaiter = null
+    }
+    session.localExecutorId = null
     session.turnBusy = false
   }
 }
@@ -942,6 +2064,7 @@ export async function startAgent(): Promise<void> {
   if (epoch !== startEpoch) return
 
   setStatus({ state: 'starting', detail: '正在准备 AI 服务…' })
+  let startingProc: ChildProcess | null = null
   try {
     const cred = (await readDeepseekCredential()) ?? (await ensureHeliosKey())
     if (epoch !== startEpoch) return
@@ -949,6 +2072,7 @@ export async function startAgent(): Promise<void> {
 
     const root = eveAppRoot()
     const { args, extraEnv } = eveSpawnArgs(root)
+    killStaleDevelopmentEve(root)
     killPortListeners(EVE_PORT)
     await sleep(200)
 
@@ -963,20 +2087,23 @@ export async function startAgent(): Promise<void> {
       },
       stdio: ['ignore', 'pipe', 'pipe']
     })
+    startingProc = proc
     child = proc
+    const stderrTail = new ProcessOutputTail()
     proc.stdout?.on('data', (buf: Buffer) => {
-      const line = buf.toString().trim()
+      const line = redactProcessOutput(buf.toString().trim())
       if (line) console.log('[eve]', line)
     })
     proc.stderr?.on('data', (buf: Buffer) => {
-      const line = buf.toString().trim()
+      stderrTail.push(buf.toString())
+      const line = redactProcessOutput(buf.toString().trim())
       if (line) console.error('[eve]', line)
     })
-    proc.on('exit', (code, signalName) => {
+    proc.on('close', (code, signalName) => {
       if (child !== proc) return
       child = null
       dropEveBindings()
-      const detail = `eve 退出（code=${code ?? 'null'} signal=${signalName ?? 'none'}）`
+      const detail = formatProcessExitDetail('eve', code, signalName, stderrTail.summary())
       if (status.state === 'starting' || status.state === 'ready') {
         setStatus({ state: 'error', detail })
       }
@@ -992,17 +2119,21 @@ export async function startAgent(): Promise<void> {
     } finally {
       clearInterval(watcher)
     }
-    if (epoch !== startEpoch || child !== proc) return
+    if (epoch !== startEpoch || (startingProc && child !== startingProc)) return
     setStatus({ state: 'ready' })
   } catch (err) {
+    // The exit handler already published the actual code/signal. Do not
+    // replace it with AbortController's generic "This operation was aborted".
     if (epoch !== startEpoch) return
-    const detail = err instanceof Error ? err.message : String(err)
+    const detail = formatStartFailure(err, Boolean(startingProc && child !== startingProc))
+    if (!detail) return
     setStatus({ state: 'error', detail })
   }
 }
 
 async function stopAgentQuiet(): Promise<void> {
   dropEveBindings()
+  dropLocalBindings()
   const ws = getStatus().workspace ?? getStatus().namespace
   if (ws) {
     for (const [id, session] of live) {
@@ -1012,6 +2143,7 @@ async function stopAgentQuiet(): Promise<void> {
   const proc = child
   child = null
   if (proc) await killChild(proc)
+  await stopCodexAppServer()
 }
 
 export async function restartAgent(): Promise<void> {

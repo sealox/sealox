@@ -379,6 +379,7 @@ export default function HomeChat({
         setConversation((prev) => (prev ? { ...prev, questions: event.questions } : prev))
         return
       }
+      if (event.type === 'archived') return
       setConversation((prev) => {
         if (!prev) return prev
         if (event.type === 'delta') {

@@ -1,64 +1,14 @@
-import { app, shell, clipboard, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { join } from 'path'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import type { ChatAttachment, ChatInputResponse, LoginEvent } from '../shared/types'
 import {
-  getAgentStatus,
-  restartAgent,
-  startAgent,
-  stopAgent,
-  listChats,
-  getChat,
-  pickChatFiles,
-  sendChatMessage,
-  cancelChat,
-  respondChat,
-  deleteChat
-} from './agent/runtime'
-import {
-  cancelLogin,
-  getStatus,
-  KNOWN_REGIONS,
-  logout,
-  saveKubeconfigText,
-  startDeviceLogin
-} from './sealos/auth'
-import { createAiKey, deleteAiKey, fetchAiProxyOverview, setAiKeyEnabled } from './sealos/aiproxy'
-import {
-  disableDatabasePublic,
-  enableDatabasePublic,
-  fetchDatabaseDetail,
-  fetchDatabaseMonitor,
-  fetchDatabaseSchema
-} from './sealos/database'
-import { fetchAppDetail, fetchAppMonitor, fetchPodLogs, fetchProjectDetail } from './sealos/details'
-import {
-  deleteApp,
-  deleteDatabase,
-  deleteProject,
-  pauseApp,
-  pauseDatabase,
-  pauseProject,
-  restartApp,
-  restartDatabase,
-  restartProject,
-  startApp,
-  startDatabase,
-  startProject
-} from './sealos/operate'
-import { fetchResources } from './sealos/resources'
-import { deployTemplate, fetchTemplateDetail, fetchTemplates } from './sealos/templates'
-import {
-  createWorkspace,
-  getInviteLink,
-  getWorkspaceDetails,
-  listWorkspaces,
-  renameWorkspace,
-  switchWorkspace
-} from './sealos/workspaces'
-import { downloadUpdate, getUpdateStatus, startUpdateChecker, stopUpdateChecker } from './update'
-import { clearDeepseekKey, getModelSettings, saveDeepseekKey } from './model-settings'
+  invokeDesktopMethod,
+  startDesktopServices,
+  stopDesktopServices,
+  type DesktopMethod
+} from './desktop-api'
+import { configureDesktopHost } from './desktop-host'
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -77,186 +27,141 @@ function createWindow(): BrowserWindow {
     }
   })
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
-  })
-
+  mainWindow.on('ready-to-show', () => mainWindow.show())
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    void shell.openExternal(details.url)
     return { action: 'deny' }
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    void mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
   return mainWindow
 }
 
+const IPC_METHODS: ReadonlyArray<readonly [string, DesktopMethod]> = [
+  ['helios:app-version', 'getAppVersion'],
+  ['helios:update-status', 'getUpdateStatus'],
+  ['helios:update-download', 'downloadUpdate'],
+  ['sealos:status', 'getStatus'],
+  ['sealos:regions', 'getRegions'],
+  ['sealos:login-start', 'startLogin'],
+  ['sealos:login-cancel', 'cancelLogin'],
+  ['sealos:save-kubeconfig', 'saveKubeconfig'],
+  ['sealos:logout', 'logout'],
+  ['sealos:resources', 'getResources'],
+  ['sealos:app-detail', 'getAppDetail'],
+  ['sealos:project-detail', 'getProjectDetail'],
+  ['sealos:app-monitor', 'getAppMonitor'],
+  ['sealos:pod-logs', 'getPodLogs'],
+  ['sealos:aiproxy-overview', 'getAiProxyOverview'],
+  ['sealos:aiproxy-create-key', 'createAiKey'],
+  ['sealos:aiproxy-key-status', 'setAiKeyEnabled'],
+  ['sealos:aiproxy-delete-key', 'deleteAiKey'],
+  ['sealos:templates', 'getTemplates'],
+  ['sealos:template-detail', 'getTemplateDetail'],
+  ['sealos:template-deploy', 'deployTemplate'],
+  ['sealos:app-delete', 'deleteApp'],
+  ['sealos:app-restart', 'restartApp'],
+  ['sealos:app-pause', 'pauseApp'],
+  ['sealos:app-start', 'startApp'],
+  ['sealos:project-delete', 'deleteProject'],
+  ['sealos:project-restart', 'restartProject'],
+  ['sealos:project-pause', 'pauseProject'],
+  ['sealos:project-start', 'startProject'],
+  ['sealos:database-detail', 'getDatabaseDetail'],
+  ['sealos:database-monitor', 'getDatabaseMonitor'],
+  ['sealos:database-schema', 'getDatabaseSchema'],
+  ['sealos:database-pause', 'pauseDatabase'],
+  ['sealos:database-start', 'startDatabase'],
+  ['sealos:database-restart', 'restartDatabase'],
+  ['sealos:database-delete', 'deleteDatabase'],
+  ['sealos:database-enable-public', 'enableDatabasePublic'],
+  ['sealos:database-disable-public', 'disableDatabasePublic'],
+  ['sealos:workspaces', 'listWorkspaces'],
+  ['sealos:workspace-switch', 'switchWorkspace'],
+  ['sealos:workspace-details', 'getWorkspaceDetails'],
+  ['sealos:workspace-rename', 'renameWorkspace'],
+  ['sealos:workspace-create', 'createWorkspace'],
+  ['sealos:workspace-invite', 'getInviteLink'],
+  ['sealos:open-external', 'openExternal'],
+  ['helios:copy-text', 'copyText'],
+  ['helios:agent-status', 'getAgentStatus'],
+  ['helios:model-settings', 'getModelSettings'],
+  ['helios:model-save-deepseek', 'saveDeepseekKey'],
+  ['helios:model-clear', 'clearDeepseekKey'],
+  ['helios:agent-executors', 'getAgentExecutors'],
+  ['helios:agent-executor-set', 'setAgentExecutor'],
+  ['helios:chat-list', 'listChats'],
+  ['helios:chat-get', 'getChat'],
+  ['helios:chat-project', 'getOrCreateProjectChat'],
+  ['helios:chat-pick-files', 'pickChatFiles'],
+  ['helios:chat-send', 'sendChatMessage'],
+  ['helios:chat-cancel', 'cancelChat'],
+  ['helios:chat-respond', 'respondChat'],
+  ['helios:chat-rename', 'renameChat'],
+  ['helios:chat-archive', 'archiveChat'],
+  ['helios:chat-delete', 'deleteChat']
+]
+
 function registerIpc(): void {
-  ipcMain.handle('helios:app-version', () => app.getVersion())
-  ipcMain.handle('helios:update-status', () => getUpdateStatus())
-  ipcMain.handle('helios:update-download', () => downloadUpdate())
-  ipcMain.handle('sealos:status', () => getStatus())
-  ipcMain.handle('sealos:regions', () => KNOWN_REGIONS)
-
-  ipcMain.handle('sealos:login-start', (event, region?: string) => {
-    const sender = event.sender
-    void startDeviceLogin(region, (loginEvent: LoginEvent) => {
-      if (sender.isDestroyed()) return
-      sender.send('sealos:login-event', loginEvent)
-      // Mirror the skill's behavior: open the verification page immediately
-      // so the user only has to approve in the browser.
-      if (loginEvent.type === 'device_code' && loginEvent.verificationUrl) {
-        void shell.openExternal(loginEvent.verificationUrl)
-      }
-      if (loginEvent.type === 'success') void startAgent()
-    })
-  })
-
-  ipcMain.handle('sealos:login-cancel', () => cancelLogin())
-  ipcMain.handle('sealos:save-kubeconfig', async (_event, text: string) => {
-    const status = await saveKubeconfigText(text)
-    void startAgent()
-    return status
-  })
-  ipcMain.handle('sealos:logout', async () => {
-    await stopAgent()
-    await logout()
-  })
-  ipcMain.handle('sealos:resources', () => fetchResources())
-  ipcMain.handle('sealos:app-detail', (_event, name: string, kind: 'Deployment' | 'StatefulSet') =>
-    fetchAppDetail(name, kind)
-  )
-  ipcMain.handle('sealos:project-detail', (_event, name: string) => fetchProjectDetail(name))
-  ipcMain.handle('sealos:app-monitor', (_event, name: string) => fetchAppMonitor(name))
-  ipcMain.handle('sealos:pod-logs', (_event, pod: string, container?: string, previous?: boolean) =>
-    fetchPodLogs(pod, container, previous)
-  )
-  ipcMain.handle('sealos:aiproxy-overview', () => fetchAiProxyOverview())
-  ipcMain.handle('sealos:aiproxy-create-key', (_event, name: string) => createAiKey(name))
-  ipcMain.handle('sealos:aiproxy-key-status', (_event, id: number, enabled: boolean) =>
-    setAiKeyEnabled(id, enabled)
-  )
-  ipcMain.handle('sealos:aiproxy-delete-key', (_event, id: number) => deleteAiKey(id))
-  ipcMain.handle('sealos:templates', () => fetchTemplates())
-  ipcMain.handle('sealos:template-detail', (_event, templateName: string) =>
-    fetchTemplateDetail(templateName)
-  )
-  ipcMain.handle(
-    'sealos:template-deploy',
-    (_event, templateName: string, args?: Record<string, string>) =>
-      deployTemplate(templateName, args)
-  )
-  ipcMain.handle('sealos:app-delete', (_event, name: string) => deleteApp(name))
-  ipcMain.handle('sealos:app-restart', (_event, name: string) => restartApp(name))
-  ipcMain.handle('sealos:app-pause', (_event, name: string) => pauseApp(name))
-  ipcMain.handle('sealos:app-start', (_event, name: string) => startApp(name))
-  ipcMain.handle('sealos:project-delete', (_event, name: string) => deleteProject(name))
-  ipcMain.handle('sealos:project-restart', (_event, name: string) => restartProject(name))
-  ipcMain.handle('sealos:project-pause', (_event, name: string) => pauseProject(name))
-  ipcMain.handle('sealos:project-start', (_event, name: string) => startProject(name))
-  ipcMain.handle('sealos:database-detail', (_event, name: string) => fetchDatabaseDetail(name))
-  ipcMain.handle('sealos:database-monitor', (_event, name: string) => fetchDatabaseMonitor(name))
-  ipcMain.handle('sealos:database-schema', (_event, name: string) => fetchDatabaseSchema(name))
-  ipcMain.handle('sealos:database-pause', (_event, name: string) => pauseDatabase(name))
-  ipcMain.handle('sealos:database-start', (_event, name: string) => startDatabase(name))
-  ipcMain.handle('sealos:database-restart', (_event, name: string) => restartDatabase(name))
-  ipcMain.handle('sealos:database-delete', (_event, name: string) => deleteDatabase(name))
-  ipcMain.handle('sealos:database-enable-public', (_event, name: string) =>
-    enableDatabasePublic(name)
-  )
-  ipcMain.handle('sealos:database-disable-public', (_event, name: string) =>
-    disableDatabasePublic(name)
-  )
-  ipcMain.handle('sealos:workspaces', () => listWorkspaces())
-  ipcMain.handle('sealos:workspace-switch', async (_event, uid: string) => {
-    const status = await switchWorkspace(uid)
-    void restartAgent()
-    return status
-  })
-  ipcMain.handle('sealos:workspace-details', (_event, uid: string) => getWorkspaceDetails(uid))
-  ipcMain.handle('sealos:workspace-rename', (_event, uid: string, teamName: string) =>
-    renameWorkspace(uid, teamName)
-  )
-  ipcMain.handle('sealos:workspace-create', (_event, teamName: string) => createWorkspace(teamName))
-  ipcMain.handle('sealos:workspace-invite', (_event, uid: string, role: 'manager' | 'developer') =>
-    getInviteLink(uid, role)
-  )
-
-  ipcMain.handle('sealos:open-external', (_event, url: string) => {
-    if (/^https?:\/\//.test(url)) return shell.openExternal(url)
-    return undefined
-  })
-
-  // 渲染进程的 navigator.clipboard 依赖窗口聚焦，桌面场景统一走主进程剪贴板
-  ipcMain.handle('helios:copy-text', (_event, text: string) => {
-    clipboard.writeText(text)
-  })
-  ipcMain.handle('helios:agent-status', () => getAgentStatus())
-  ipcMain.handle('helios:model-settings', () => getModelSettings())
-  ipcMain.handle('helios:model-save-deepseek', async (_event, key: string) => {
-    await saveDeepseekKey(key)
-    if (getStatus().authenticated) void startAgent()
-  })
-  ipcMain.handle('helios:model-clear', async () => {
-    await clearDeepseekKey()
-    if (getStatus().authenticated) void startAgent()
-  })
-  ipcMain.handle('helios:chat-list', () => listChats())
-  ipcMain.handle('helios:chat-get', (_event, id: string) => getChat(id))
-  ipcMain.handle('helios:chat-pick-files', (event) =>
-    pickChatFiles(BrowserWindow.fromWebContents(event.sender))
-  )
-  ipcMain.handle(
-    'helios:chat-send',
-    (_event, conversationId: string, text: string, attachments?: ChatAttachment[]) =>
-      sendChatMessage(conversationId, text, attachments)
-  )
-  ipcMain.handle('helios:chat-cancel', (_event, conversationId: string) =>
-    cancelChat(conversationId)
-  )
-  ipcMain.handle(
-    'helios:chat-respond',
-    (_event, conversationId: string, responses: ChatInputResponse[]) =>
-      respondChat(conversationId, responses)
-  )
-  ipcMain.handle('helios:chat-delete', (_event, conversationId: string) =>
-    deleteChat(conversationId)
-  )
+  for (const [channel, method] of IPC_METHODS) {
+    ipcMain.handle(channel, (_event, ...args: unknown[]) => invokeDesktopMethod(method, args))
+  }
 }
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.helios.app')
-
-  // Packaged builds get the icon from electron-builder; dev needs it set here.
-  if (process.platform === 'darwin') {
-    app.dock?.setIcon(icon)
-  }
-
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
+  configureDesktopHost({
+    isPackaged: app.isPackaged,
+    appRoot: app.getAppPath(),
+    resourcesPath: process.resourcesPath,
+    userDataPath: app.getPath('userData'),
+    downloadsPath: app.getPath('downloads'),
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    emit(channel, payload) {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) window.webContents.send(channel, payload)
+      }
+    },
+    async openExternal(url) {
+      await shell.openExternal(url)
+    },
+    openPath(path) {
+      return shell.openPath(path)
+    },
+    async writeClipboard(text) {
+      clipboard.writeText(text)
+    },
+    async selectFiles() {
+      const window = BrowserWindow.getFocusedWindow()
+      const options = {
+        title: '添加文件',
+        properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>
+      }
+      const result = window
+        ? await dialog.showOpenDialog(window, options)
+        : await dialog.showOpenDialog(options)
+      return result.canceled ? [] : result.filePaths
+    }
   })
+
+  if (process.platform === 'darwin') app.dock?.setIcon(icon)
+  app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
 
   registerIpc()
   createWindow()
-  startUpdateChecker()
-  if (getStatus().authenticated) void startAgent()
+  startDesktopServices()
 
-  app.on('activate', function () {
+  app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
-app.on('before-quit', () => {
-  stopUpdateChecker()
-  void stopAgent()
-})
-
+app.on('before-quit', () => void stopDesktopServices())
 app.on('window-all-closed', () => {
-  cancelLogin()
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  if (process.platform !== 'darwin') app.quit()
 })

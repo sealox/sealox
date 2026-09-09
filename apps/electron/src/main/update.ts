@@ -1,4 +1,3 @@
-import { app, BrowserWindow, shell } from 'electron'
 import { createHash } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
 import { rename, unlink } from 'node:fs/promises'
@@ -6,21 +5,27 @@ import { basename, join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { Readable, Transform } from 'node:stream'
 import type { AppUpdateStatus } from '../shared/types'
+import { desktopHost } from './desktop-host'
 
 const MANIFEST_URL = 'https://raw.githubusercontent.com/norberia/helios-release/main/latest.json'
 const URL_PREFIX = 'https://github.com/norberia/helios-release/releases/download/'
 const CHECK_INTERVAL_MS = 30 * 60 * 1000
 const MANIFEST_TIMEOUT_MS = 15_000
 const DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1000
-const DMG_NAME = /^Helios-\d+\.\d+\.\d+-mac-arm64\.dmg$/
+const ARTIFACT_NAME: Record<string, RegExp> = {
+  'macos-arm64': /^Helios-\d+\.\d+\.\d+-mac-arm64\.dmg$/,
+  'macos-x64': /^Helios-\d+\.\d+\.\d+-mac-x64\.dmg$/,
+  'windows-x64': /^Helios-\d+\.\d+\.\d+-windows-x64\.exe$/
+}
 const VERSION = /^v?(\d+)\.(\d+)\.(\d+)$/
 const SHA256 = /^[a-f0-9]{64}$/
 
 interface Manifest {
   version: string
   notes: string
-  url: string
-  sha256: string
+  url?: string
+  sha256?: string
+  artifacts?: Record<string, { url: string; sha256: string }>
 }
 
 interface InternalStatus extends AppUpdateStatus {
@@ -50,10 +55,7 @@ function toPublic(value: InternalStatus): AppUpdateStatus {
 }
 
 function broadcast(): void {
-  const payload = toPublic(status)
-  for (const window of BrowserWindow.getAllWindows()) {
-    if (!window.isDestroyed()) window.webContents.send('helios:update-event', payload)
-  }
+  desktopHost().emit('helios:update-event', toPublic(status))
 }
 
 function parseVersion(raw: string): [number, number, number] | null {
@@ -78,25 +80,52 @@ function readManifest(value: unknown): Manifest | null {
   const rec = value as Record<string, unknown>
   if (typeof rec.version !== 'string' || !parseVersion(rec.version)) return null
   const notes = typeof rec.notes === 'string' ? rec.notes.trim().slice(0, 2000) : ''
-  const url = typeof rec.url === 'string' ? rec.url.trim() : ''
-  const sha256 = typeof rec.sha256 === 'string' ? rec.sha256.trim().toLowerCase() : ''
-  return { version: rec.version.trim().replace(/^v/, ''), notes, url, sha256 }
+  const url = typeof rec.url === 'string' ? rec.url.trim() : undefined
+  const sha256 = typeof rec.sha256 === 'string' ? rec.sha256.trim().toLowerCase() : undefined
+  const artifacts: Record<string, { url: string; sha256: string }> = {}
+  if (rec.artifacts && typeof rec.artifacts === 'object') {
+    for (const [key, value] of Object.entries(rec.artifacts as Record<string, unknown>)) {
+      if (!value || typeof value !== 'object') continue
+      const item = value as Record<string, unknown>
+      if (typeof item.url !== 'string' || typeof item.sha256 !== 'string') continue
+      artifacts[key] = { url: item.url.trim(), sha256: item.sha256.trim().toLowerCase() }
+    }
+  }
+  return {
+    version: rec.version.trim().replace(/^v/, ''),
+    notes,
+    url,
+    sha256,
+    artifacts: Object.keys(artifacts).length ? artifacts : undefined
+  }
 }
 
-function isDownloadable(manifest: Manifest): boolean {
-  if (!manifest.url.startsWith(URL_PREFIX)) return false
-  if (!SHA256.test(manifest.sha256)) return false
+function artifactKey(): string | null {
+  if (process.platform === 'darwin') return process.arch === 'arm64' ? 'macos-arm64' : 'macos-x64'
+  if (process.platform === 'win32' && process.arch === 'x64') return 'windows-x64'
+  return null
+}
+
+function downloadableArtifact(manifest: Manifest): { url: string; sha256: string } | null {
+  const key = artifactKey()
+  if (!key) return null
+  const artifact =
+    manifest.artifacts?.[key] ??
+    (key === 'macos-arm64' && manifest.url && manifest.sha256
+      ? { url: manifest.url, sha256: manifest.sha256 }
+      : null)
+  if (!artifact?.url.startsWith(URL_PREFIX) || !SHA256.test(artifact.sha256)) return null
   try {
-    return DMG_NAME.test(basename(new URL(manifest.url).pathname))
+    return ARTIFACT_NAME[key].test(basename(new URL(artifact.url).pathname)) ? artifact : null
   } catch {
-    return false
+    return null
   }
 }
 
 async function checkForUpdate(): Promise<void> {
   if (checking || status.phase === 'downloading') return
   checking = true
-  const currentVersion = app.getVersion()
+  const currentVersion = desktopHost().appVersion
   try {
     const response = await fetch(MANIFEST_URL, {
       signal: AbortSignal.timeout(MANIFEST_TIMEOUT_MS),
@@ -108,7 +137,8 @@ async function checkForUpdate(): Promise<void> {
     })
     if (!response.ok) return
     const manifest = readManifest(await response.json())
-    if (!manifest || !isNewer(manifest.version, currentVersion) || !isDownloadable(manifest)) {
+    const artifact = manifest ? downloadableArtifact(manifest) : null
+    if (!manifest || !isNewer(manifest.version, currentVersion) || !artifact) {
       status = { currentVersion, available: false, phase: 'idle' }
       broadcast()
       return
@@ -121,8 +151,8 @@ async function checkForUpdate(): Promise<void> {
       available: true,
       latestVersion: manifest.version,
       notes: manifest.notes,
-      url: manifest.url,
-      sha256: manifest.sha256,
+      url: artifact.url,
+      sha256: artifact.sha256,
       phase: keep ? status.phase : 'available',
       progress: keep ? status.progress : undefined,
       error: keep ? status.error : undefined
@@ -153,7 +183,7 @@ export async function downloadUpdate(): Promise<void> {
 
   const url = status.url
   const expected = status.sha256
-  const dest = join(app.getPath('downloads'), basename(new URL(url).pathname))
+  const dest = join(desktopHost().downloadsPath, basename(new URL(url).pathname))
   const partial = `${dest}.part`
 
   status = { ...status, phase: 'downloading', progress: 0, error: undefined }
@@ -164,7 +194,7 @@ export async function downloadUpdate(): Promise<void> {
     const response = await fetch(url, {
       signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
       redirect: 'follow',
-      headers: { 'user-agent': `Helios/${app.getVersion()}` }
+      headers: { 'user-agent': `Helios/${desktopHost().appVersion}` }
     })
     if (!response.ok || !response.body) {
       throw new Error(`下载失败：HTTP ${response.status}`)
@@ -191,7 +221,7 @@ export async function downloadUpdate(): Promise<void> {
     }
     await rename(partial, dest)
 
-    const openError = await shell.openPath(dest)
+    const openError = await desktopHost().openPath(dest)
     if (openError) throw new Error(openError)
     status = { ...status, phase: 'ready', progress: 1, error: undefined }
     broadcast()
@@ -204,9 +234,15 @@ export async function downloadUpdate(): Promise<void> {
 }
 
 export function startUpdateChecker(): void {
-  status = { currentVersion: app.getVersion(), available: false, phase: 'idle' }
-  void checkForUpdate()
-  timer = setInterval(() => void checkForUpdate(), CHECK_INTERVAL_MS)
+  status = { currentVersion: desktopHost().appVersion, available: false, phase: 'idle' }
+  void checkForUpdate().catch((error: unknown) => {
+    console.error('[update] initial check failed', error)
+  })
+  timer = setInterval(() => {
+    void checkForUpdate().catch((error: unknown) => {
+      console.error('[update] scheduled check failed', error)
+    })
+  }, CHECK_INTERVAL_MS)
 }
 
 export function stopUpdateChecker(): void {

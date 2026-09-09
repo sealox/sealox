@@ -1,19 +1,26 @@
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
-import { dirname, join, posix } from "node:path";
+import { delimiter, dirname, join, posix } from "node:path";
 import { Readable } from "node:stream";
-import { mkdir, readFile, lstat, readlink, rm, symlink, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { chmod, mkdir, readFile, lstat, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import type {
   SandboxBackend,
   SandboxBackendHandle,
   SandboxProcess,
   SandboxSession
 } from "eve/sandbox";
+import { assertSafeSandboxCommand, inheritedSandboxEnvironment } from "./security";
 
 const WORKSPACE = "/workspace";
 const HELIOS_ROOT = join(homedir(), ".helios");
 const WORKSPACE_ROOT = join(HELIOS_ROOT, "workspace");
 const SANDBOX_HOME = join(HELIOS_ROOT, "home");
+const SANDBOX_CONFIG = join(SANDBOX_HOME, ".config");
+const GH_CONFIG_DIR = join(SANDBOX_CONFIG, "gh");
+const DOCKER_CONFIG = join(SANDBOX_HOME, ".docker");
+const DOCKER_CONFIG_PATH = join(DOCKER_CONFIG, "config.json");
+const SANDBOX_GITCONFIG = join(SANDBOX_HOME, ".gitconfig");
 const REAL_SEALOS = join(homedir(), ".sealos");
 const KUBECONFIG = process.env["SEALOS_KUBECONFIG"] ?? join(REAL_SEALOS, "kubeconfig");
 
@@ -21,25 +28,52 @@ function hostPath(sandboxPath: string): string {
   if (sandboxPath === WORKSPACE || sandboxPath.startsWith(`${WORKSPACE}/`)) {
     return join(WORKSPACE_ROOT, sandboxPath.slice(WORKSPACE.length));
   }
-  if (sandboxPath.startsWith("/")) return sandboxPath;
+  if (sandboxPath.startsWith("/")) {
+    return process.platform === "win32"
+      ? join(SANDBOX_HOME, "rootfs", sandboxPath.slice(1))
+      : sandboxPath;
+  }
   return join(WORKSPACE_ROOT, sandboxPath);
 }
 
 function commandEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
-  const path = [
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-    join(homedir(), ".docker/bin"),
-    process.env["PATH"] ?? "/usr/bin:/bin"
-  ].join(":");
+  const platformPaths = process.platform === "win32"
+    ? [
+        dirname(bashExecutable()),
+        join(process.env["ProgramFiles"] ?? "C:\\Program Files", "Docker", "Docker", "resources", "bin"),
+        process.env["PATH"] ?? ""
+      ]
+    : [
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        join(homedir(), ".docker/bin"),
+        process.env["PATH"] ?? "/usr/bin:/bin"
+      ];
   return {
-    ...process.env,
+    ...inheritedSandboxEnvironment(process.env),
     HOME: SANDBOX_HOME,
+    USERPROFILE: SANDBOX_HOME,
+    XDG_CONFIG_HOME: SANDBOX_CONFIG,
+    GH_CONFIG_DIR,
+    DOCKER_CONFIG,
+    // Keep git from inheriting a host-level credential helper through an
+    // explicitly configured GIT_CONFIG_GLOBAL path.
+    GIT_CONFIG_GLOBAL: SANDBOX_GITCONFIG,
     KUBECONFIG,
     SEALOS_KUBECONFIG: KUBECONFIG,
-    PATH: path,
+    PATH: platformPaths.filter(Boolean).join(delimiter),
     ...extra
   };
+}
+
+function bashExecutable(): string {
+  if (process.env["HELIOS_BASH_PATH"]) return process.env["HELIOS_BASH_PATH"];
+  if (process.platform !== "win32") return "/bin/bash";
+  const candidates = [
+    join(process.env["ProgramFiles"] ?? "C:\\Program Files", "Git", "bin", "bash.exe"),
+    join(process.env["LOCALAPPDATA"] ?? homedir(), "Programs", "Git", "bin", "bash.exe")
+  ];
+  return candidates.find(existsSync) ?? "bash.exe";
 }
 
 async function streamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
@@ -62,6 +96,9 @@ function nodeToWeb(stream: NodeJS.ReadableStream | null): ReadableStream<Uint8Ar
 async function ensureLayout(): Promise<void> {
   await mkdir(WORKSPACE_ROOT, { recursive: true });
   await mkdir(SANDBOX_HOME, { recursive: true });
+  await mkdir(GH_CONFIG_DIR, { recursive: true });
+  await ensureGitConfig();
+  await ensureDockerConfig();
   const link = join(SANDBOX_HOME, ".sealos");
   try {
     const st = await lstat(link);
@@ -74,7 +111,74 @@ async function ensureLayout(): Promise<void> {
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
-  await symlink(REAL_SEALOS, link);
+  await symlink(REAL_SEALOS, link, process.platform === "win32" ? "junction" : "dir");
+}
+
+/** Remove credential helpers from the sandbox-only git config. */
+async function ensureGitConfig(): Promise<void> {
+  let source = "";
+  try {
+    source = await readFile(SANDBOX_GITCONFIG, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") source = "";
+  }
+
+  const lines = source.split(/\r?\n/);
+  let section = "";
+  const sanitized = lines.filter((line) => {
+    const header = /^\s*\[([^\]]+)\]\s*$/.exec(line);
+    if (header) {
+      section = header[1].trim().toLowerCase();
+      return true;
+    }
+    return !(section === "credential" && /^\s*helper\s*=/.test(line));
+  });
+  const output = sanitized.join("\n");
+  if (output !== source) {
+    await writeFile(SANDBOX_GITCONFIG, output, { encoding: "utf8", mode: 0o600 });
+  }
+  try {
+    await chmod(SANDBOX_GITCONFIG, 0o600);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+}
+
+/**
+ * Docker Desktop's credential helpers talk to the macOS Keychain. Agent
+ * commands run with a synthetic HOME, so a helper configured by the host can
+ * only fail or open a Keychain dialog. Keep the sandbox config file-backed.
+ */
+async function ensureDockerConfig(): Promise<void> {
+  await mkdir(DOCKER_CONFIG, { recursive: true });
+
+  let config: Record<string, unknown> = {};
+  try {
+    const raw = await readFile(DOCKER_CONFIG_PATH, "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      config = parsed as Record<string, unknown>;
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      // A broken sandbox config must not prevent the agent from starting. It
+      // will be replaced with a minimal file-backed config below.
+      config = {};
+    }
+  }
+
+  const auths = config["auths"];
+  if (!auths || typeof auths !== "object" || Array.isArray(auths)) {
+    config["auths"] = {};
+  }
+  delete config["credsStore"];
+  delete config["credHelpers"];
+
+  await writeFile(DOCKER_CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600
+  });
+  await chmod(DOCKER_CONFIG_PATH, 0o600);
 }
 
 function createSession(id: string): SandboxSession {
@@ -89,8 +193,9 @@ function createSession(id: string): SandboxSession {
         ? options.abortSignal.reason
         : new Error("aborted");
     }
+    assertSafeSandboxCommand(options.command);
     const cwd = options.workingDirectory ? hostPath(options.workingDirectory) : WORKSPACE_ROOT;
-    const proc = spawn("/bin/bash", ["-c", options.command], {
+    const proc = spawn(bashExecutable(), ["-c", options.command], {
       cwd,
       env: commandEnv(options.env),
       signal: options.abortSignal,

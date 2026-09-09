@@ -1,7 +1,7 @@
-import { BrowserWindow, dialog } from 'electron'
 import { stat, readFile } from 'fs/promises'
 import { basename, extname } from 'path'
 import { MAX_CHAT_FILES, type ChatAttachment } from '../../shared/types'
+import { desktopHost } from '../desktop-host'
 
 export const MAX_CHAT_FILE_BYTES = 20 * 1024 * 1024
 
@@ -40,17 +40,10 @@ export function mediaTypeFor(filename: string): string {
   return MIME[extname(filename).toLowerCase()] ?? 'application/octet-stream'
 }
 
-export async function pickChatFiles(win: BrowserWindow | null): Promise<ChatAttachment[]> {
-  const options = {
-    title: '添加文件',
-    properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>
-  }
-  const result = win
-    ? await dialog.showOpenDialog(win, options)
-    : await dialog.showOpenDialog(options)
-  if (result.canceled) return []
+export async function pickChatFiles(): Promise<ChatAttachment[]> {
+  const filePaths = await desktopHost().selectFiles()
   const picked: ChatAttachment[] = []
-  for (const filePath of result.filePaths) {
+  for (const filePath of filePaths) {
     if (picked.length >= MAX_CHAT_FILES) break
     const info = await stat(filePath).catch(() => null)
     if (!info?.isFile()) continue

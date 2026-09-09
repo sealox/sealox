@@ -1,0 +1,9 @@
+{
+  "extends": "../../apps/electron/tsconfig.node.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"]
+}

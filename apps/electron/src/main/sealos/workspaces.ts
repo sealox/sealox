@@ -8,6 +8,8 @@ import {
   getStatus,
   loadAuthJson,
   requestJson,
+  responseMessage,
+  responseStatus,
   saveCredentials,
   setCurrentWorkspaceName
 } from './auth'
@@ -71,8 +73,12 @@ async function fetchNamespaces(session: AuthSession): Promise<RawNamespace[]> {
   const resp = await requestJson(`${session.region}/api/auth/namespace/list`, {
     token: session.regionalToken
   })
-  if (resp.status === 401) throw new Error('会话已过期，请退出登录后重新登录')
-  if (resp.status !== 200) throw new Error(`获取工作空间列表失败（HTTP ${resp.status}）`)
+  const status = responseStatus(resp)
+  if (status === 401) throw new Error('会话已过期，请退出登录后重新登录')
+  if (status !== 200) {
+    const detail = responseMessage(resp.body)
+    throw new Error(`获取工作空间列表失败（HTTP ${status}${detail ? `：${detail}` : ''}）`)
+  }
   const raw = (resp.body as { data?: unknown })?.data
   return (
     Array.isArray(raw) ? raw : ((raw as { namespaces?: unknown[] })?.namespaces ?? [])
@@ -109,19 +115,35 @@ export async function switchWorkspace(uid: string): Promise<SealosStatus> {
     token: session.regionalToken,
     json: { ns_uid: uid }
   })
-  const switchData = (switchResp.body as { data?: { token?: string; appToken?: string } })?.data
+  const switchData = (
+    switchResp.body as {
+      data?: { token?: string; appToken?: string; app_token?: string }
+    }
+  )?.data
   const newToken = switchData?.token
-  if (switchResp.status !== 200 || !newToken) {
-    throw new Error(`切换工作空间失败（HTTP ${switchResp.status}）`)
+  const switchStatus = responseStatus(switchResp)
+  if (switchStatus !== 200 || !newToken) {
+    const detail = responseMessage(switchResp.body)
+    throw new Error(`切换工作空间失败（HTTP ${switchStatus}${detail ? `：${detail}` : ''}）`)
   }
 
   const kcResp = await requestJson(`${session.region}/api/auth/getKubeconfig`, {
     token: newToken
   })
   const kubeconfig = (kcResp.body as { data?: { kubeconfig?: string } })?.data?.kubeconfig
-  if (kcResp.status !== 200 || !kubeconfig) {
-    throw new Error(`获取新 kubeconfig 失败（HTTP ${kcResp.status}）`)
+  const kubeconfigStatus = responseStatus(kcResp)
+  if (kubeconfigStatus !== 200 || !kubeconfig) {
+    const detail = responseMessage(kcResp.body)
+    throw new Error(
+      `获取新 kubeconfig 失败（HTTP ${kubeconfigStatus}${detail ? `：${detail}` : ''}）`
+    )
   }
+
+  // namespace/switch 通常只返回新的 regional token；保留当前 app_token，
+  // 否则切换后 Agent 会被迫再次走应用 token 换发流程。
+  const currentAuth = loadAuthJson()
+  const currentAppToken =
+    typeof currentAuth.app_token === 'string' ? currentAuth.app_token : undefined
 
   await saveCredentials(
     session.region,
@@ -133,13 +155,13 @@ export async function switchWorkspace(uid: string): Promise<SealosStatus> {
       id: target.id,
       teamName: target.teamName
     },
-    switchData?.appToken
+    switchData?.appToken ?? switchData?.app_token ?? currentAppToken
   )
   return getStatus()
 }
 
 function apiError(fallback: string, status: number, body: unknown): Error {
-  const message = (body as { message?: string })?.message
+  const message = responseMessage(body)
   return new Error(`${fallback}（HTTP ${status}${message ? `：${message}` : ''}）`)
 }
 
@@ -165,7 +187,8 @@ export async function getWorkspaceDetails(uid: string): Promise<WorkspaceDetails
     token: session.regionalToken,
     json: { ns_uid: uid }
   })
-  if (resp.status !== 200) throw apiError('获取工作空间详情失败', resp.status, resp.body)
+  const status = responseStatus(resp)
+  if (status !== 200) throw apiError('获取工作空间详情失败', status, resp.body)
   const data = (resp.body as { data?: { users?: RawTeamUser[]; namespace?: RawNamespace } })?.data
   const myRole = (data?.namespace as { role?: unknown } | undefined)?.role
   const members: WorkspaceMember[] = (data?.users ?? [])
@@ -196,7 +219,8 @@ export async function renameWorkspace(uid: string, teamName: string): Promise<Se
     token: session.regionalToken,
     json: { ns_uid: uid, teamName: name }
   })
-  if (resp.status !== 200) throw apiError('重命名失败（仅拥有者可重命名）', resp.status, resp.body)
+  const status = responseStatus(resp)
+  if (status !== 200) throw apiError('重命名失败（仅拥有者可重命名）', status, resp.body)
   if (session.currentUid === uid) await setCurrentWorkspaceName(name)
   return getStatus()
 }
@@ -212,8 +236,9 @@ export async function createWorkspace(teamName: string): Promise<WorkspaceInfo> 
     json: { teamName: name },
     timeoutMs: 90_000
   })
-  if (resp.status === 409) throw new Error('同名工作空间已存在')
-  if (resp.status !== 200) throw apiError('新建工作空间失败', resp.status, resp.body)
+  const status = responseStatus(resp)
+  if (status === 409) throw new Error('同名工作空间已存在')
+  if (status !== 200) throw apiError('新建工作空间失败', status, resp.body)
   const ns = (resp.body as { data?: { namespace?: RawNamespace } })?.data?.namespace
   if (!ns?.uid || !ns.id) throw new Error('新建工作空间返回数据异常')
   return {
@@ -235,8 +260,9 @@ export async function getInviteLink(uid: string, role: 'manager' | 'developer'):
     token: session.regionalToken,
     json: { ns_uid: uid, role: INVITE_ROLE[role] }
   })
-  if (resp.status !== 200) {
-    throw apiError('生成邀请链接失败（需要拥有者或管理员权限）', resp.status, resp.body)
+  const status = responseStatus(resp)
+  if (status !== 200) {
+    throw apiError('生成邀请链接失败（需要拥有者或管理员权限）', status, resp.body)
   }
   const code = (resp.body as { data?: { code?: string } })?.data?.code
   if (!code) throw new Error('生成邀请链接失败：响应缺少 code')

@@ -85,7 +85,8 @@ function SchemaCatalog({ tree }: { tree: DatabaseSchemaTree }): React.JSX.Elemen
       if (isSystemDatabase(db.name)) system.push(db)
       else app.push(db)
     }
-    const byName = (a: DatabaseSchemaNode, b: DatabaseSchemaNode) => a.name.localeCompare(b.name)
+    const byName = (a: DatabaseSchemaNode, b: DatabaseSchemaNode): number =>
+      a.name.localeCompare(b.name)
     return { appDbs: app.sort(byName), systemDbs: system.sort(byName) }
   }, [tree.databases])
 
