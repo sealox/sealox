@@ -1,4 +1,4 @@
-# Helios
+# Sealos
 
 在 Sealos 上做出自己的应用。Agent 负责部署、照看、操作你账号里的资源。
 
