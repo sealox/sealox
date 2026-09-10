@@ -61,7 +61,7 @@ import { clearDeepseekKey, getModelSettings, saveDeepseekKey } from './model-set
 import { getAgentExecutors, setAgentExecutor } from './agent-executors'
 import { downloadUpdate, getUpdateStatus, startUpdateChecker, stopUpdateChecker } from './update'
 import { desktopHost } from './desktop-host'
-import { listStorageObjects, uploadStorageObject, deleteStorageObject, createStorageFolder, getStorageDownloadUrl } from './sealos/storage'
+import { listStorageObjects, uploadStorageObject, deleteStorageObject, createStorageFolder, getStorageDownloadUrl, getStorageInfo } from './sealos/storage'
 
 export const DESKTOP_METHODS = [
   'getAppVersion',
