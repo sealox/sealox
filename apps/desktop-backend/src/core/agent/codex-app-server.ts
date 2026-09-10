@@ -128,7 +128,9 @@ export class CodexAppServerClient {
     this.stopping = false
     this.stderrTail = new ProcessOutputTail(12, 12_000)
     const cwd = desktopHost().appRoot
-    const proc = spawn(this.command, ['app-server'], {
+    // Keep app-server on the same account-compatible model as the local Codex CLI.
+    const model = process.env.HELIOS_CODEX_MODEL ?? 'gpt-5.6-sol'
+    const proc = spawn(this.command, ['-c', `model=${JSON.stringify(model)}`, 'app-server'], {
       cwd,
       env: await codexEnvironment(),
       stdio: ['pipe', 'pipe', 'pipe'],

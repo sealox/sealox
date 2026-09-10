@@ -51,6 +51,11 @@ const EVE_HOST = '127.0.0.1'
 const DEFAULT_EVE_PORT = 24721
 const MIN_EVE_NODE_MAJOR = 24
 
+function codexModel(): string {
+  const configured = process.env.HELIOS_CODEX_MODEL?.trim()
+  return configured || 'gpt-5.6-sol'
+}
+
 function configuredEvePort(): number {
   const raw = process.env.HELIOS_EVE_PORT
   if (!raw) return DEFAULT_EVE_PORT
@@ -444,6 +449,7 @@ async function ensureCodexThread(
         {
           threadId: stored,
           cwd: workdir,
+          model: codexModel(),
           approvalPolicy: 'on-request',
           approvalsReviewer: 'user',
           sandbox: 'workspace-write',
@@ -463,6 +469,7 @@ async function ensureCodexThread(
       'thread/start',
       {
         cwd: workdir,
+        model: codexModel(),
         approvalPolicy: 'on-request',
         approvalsReviewer: 'user',
         sandbox: 'workspace-write',
@@ -517,6 +524,7 @@ async function runCodexExecutor(
     {
       threadId,
       cwd: workdir,
+      model: codexModel(),
       input: [{ type: 'text', text: prompt, text_elements: [] }]
     },
     60_000
