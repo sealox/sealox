@@ -6,7 +6,9 @@ class MainFlutterWindow: NSWindow {
 
   // Base standard: native traffic lights share the visual centerline of the
   // Flutter sidebar collapse control (ShellScreen's macOS title-bar control).
-  private static let trafficLightSidebarAlignmentOffset: CGFloat = -8
+  // AppKit's title-bar coordinates grow upward, so a more negative value
+  // moves the controls down to the Flutter sidebar-toggle baseline.
+  private static let trafficLightSidebarAlignmentOffset: CGFloat = -16
 
   override func awakeFromNib() {
     styleMask.insert(.fullSizeContentView)
