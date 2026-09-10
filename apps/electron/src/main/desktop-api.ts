@@ -2,6 +2,7 @@ import type { ChatAttachment, ChatInputResponse, LoginEvent } from '../shared/ty
 import {
   archiveChat,
   cancelChat,
+  createChat,
   deleteChat,
   getAgentStatus,
   getChat,
@@ -116,6 +117,7 @@ export const DESKTOP_METHODS = [
   'setAgentExecutor',
   'listChats',
   'getChat',
+  'createChat',
   'getOrCreateProjectChat',
   'pickChatFiles',
   'sendChatMessage',
@@ -270,6 +272,11 @@ export async function invokeDesktopMethod(
       return listChats()
     case 'getChat':
       return getChat(String(args[0]))
+    case 'createChat':
+      return createChat(
+        typeof args[0] === 'string' && args[0].trim() ? String(args[0]) : undefined,
+        typeof args[1] === 'string' ? args[1] : undefined
+      )
     case 'getOrCreateProjectChat':
       return getOrCreateProjectChat(
         String(args[0]),

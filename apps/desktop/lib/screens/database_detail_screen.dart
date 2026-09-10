@@ -32,18 +32,41 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen> {
   Future<void> _load() async {
     final controller = AppScope.of(context, listen: false);
     try {
-      final values = await Future.wait([
-        controller.invoke('getDatabaseDetail', [widget.name]),
-        controller.invoke('getDatabaseMonitor', [widget.name]),
-        controller.invoke('getDatabaseSchema', [widget.name]),
+      // Database details are the primary page data. Monitoring and schema
+      // are supplementary and should not prevent the page from opening.
+      final loadedDetail = await controller.invoke('getDatabaseDetail', [
+        widget.name,
       ]);
-      if (mounted) {
-        setState(() {
-          detail = jsonMap(values[0]);
-          monitor = jsonMap(values[1]);
-          schema = jsonMap(values[2]);
-        });
+      if (!mounted) return;
+      setState(() => detail = jsonMap(loadedDetail));
+
+      try {
+        final loadedMonitor = await controller.invoke('getDatabaseMonitor', [
+          widget.name,
+        ]);
+        if (mounted) monitor = jsonMap(loadedMonitor);
+      } catch (_) {
+        if (mounted) {
+          monitor = {
+            'available': false,
+            'cpu': const <Object?>[],
+            'memory': const <Object?>[],
+            'disk': const <Object?>[],
+          };
+        }
       }
+
+      try {
+        final loadedSchema = await controller.invoke('getDatabaseSchema', [
+          widget.name,
+        ]);
+        if (mounted) schema = jsonMap(loadedSchema);
+      } catch (_) {
+        if (mounted) {
+          schema = {'supported': false, 'reason': 'error'};
+        }
+      }
+      if (mounted) setState(() {});
     } catch (exception) {
       if (mounted) setState(() => error = exception.toString());
     }
@@ -60,6 +83,25 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen> {
         listen: false,
       ).operate('${action}Database', widget.name);
       if (action != 'delete') await _load();
+    } catch (exception) {
+      if (mounted) setState(() => error = exception.toString());
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _openMaintenanceChat() async {
+    final data = detail;
+    if (data == null || busy) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await AppScope.of(context, listen: false).openResourceChat(
+        projectName: stringValue(data['project']),
+        draft: '我想对 ${widget.name} 数据库进行如下操作：',
+      );
     } catch (exception) {
       if (mounted) setState(() => error = exception.toString());
     } finally {
@@ -149,50 +191,54 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen> {
     final stopped = stringValue(data['phase']) == 'Stopped';
     final engine = stringValue(data['engine']);
     final version = stringValue(data['version']);
-    final project = stringValue(data['project']);
     final publicConnection = jsonMap(data['publicConnection']);
     if (publicConnection.isEmpty &&
         stringValue(data['publicConnectionRaw']).isNotEmpty) {
       publicConnection['connectionString'] = data['publicConnectionRaw'];
     }
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 10, 24, 20),
       children: [
         if (error != null) ...[
           ErrorBanner(
             message: error!,
             onClose: () => setState(() => error = null),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
         ],
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            IconButton(
+              tooltip: '返回',
+              onPressed: AppScope.of(context, listen: false).closeDetail,
+              icon: const Icon(Icons.arrow_back, size: 20),
+            ),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     widget.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.headlineLarge,
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
                     '$engine $version',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   StatusBadge(stringValue(data['phase'])),
                 ],
               ),
             ),
-            OutlinedButton.icon(
-              onPressed: () =>
-                  AppScope.of(context, listen: false).startChatWithDraft(
-                    '请查看当前工作空间的数据库 ${widget.name}（引擎 $engine，版本 $version，状态 ${data['phase']}）。先不要改数据。我的问题是：',
-                  ),
-              icon: const Icon(Icons.auto_awesome, size: 17),
-              label: const Text('问 Helios'),
+            FilledButton.icon(
+              onPressed: busy ? null : _openMaintenanceChat,
+              icon: const Icon(Icons.forum_outlined, size: 17),
+              label: const Text('对话维护'),
             ),
             const SizedBox(width: 8),
             OutlinedButton.icon(
@@ -209,69 +255,34 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen> {
               label: const Text('重启'),
             ),
             const SizedBox(width: 8),
-            IconButton(
-              tooltip: '删除数据库',
-              onPressed: busy ? null : _delete,
-              icon: Icon(Icons.delete_outline, color: context.helios.red),
-            ),
-            IconButton(
-              tooltip: '刷新详情',
-              onPressed: busy ? null : _load,
-              icon: const Icon(Icons.refresh, size: 20),
+            Tooltip(
+              message: '删除数据库',
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: context.helios.red,
+                  minimumSize: const Size(34, 34),
+                  padding: EdgeInsets.zero,
+                ),
+                onPressed: busy ? null : _delete,
+                child: const Icon(Icons.delete_outline, size: 17),
+              ),
             ),
           ],
         ),
-        if (project.isNotEmpty)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => AppScope.of(
-                context,
-                listen: false,
-              ).openDetail(DetailRoute('project', project)),
-              icon: const Icon(Icons.layers_outlined, size: 16),
-              label: Text(project),
-            ),
-          ),
-        const SizedBox(height: 22),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              children: [
-                KeyValue('引擎', engine),
-                KeyValue('版本', version),
-                KeyValue(
-                  'CPU',
-                  data['cpu'] == null ? '' : '${data['cpu']} vCPU',
-                ),
-                KeyValue(
-                  '内存',
-                  data['memory'] == null ? '' : '${data['memory']} GiB',
-                ),
-                KeyValue(
-                  '存储',
-                  data['storage'] == null ? '' : '${data['storage']} GiB',
-                ),
-                KeyValue('副本', stringValue(data['replicas'])),
-                KeyValue('项目', stringValue(data['project'])),
-                KeyValue('创建时间', displayDate(data['createdAt'])),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         const SectionTitle('连接'),
-        _connectionCard('集群内', jsonMap(data['connection']), 'internal'),
-        const SizedBox(height: 12),
+        _connectionCard('内网', jsonMap(data['connection']), 'internal'),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
-              child: Text(
-                '公网连接',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
+              child: Text('公网', style: Theme.of(context).textTheme.titleMedium),
             ),
+            Text(
+              boolValue(data['publicEnabled']) ? '已开启' : '未开启',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(width: 6),
             Switch(
               value: boolValue(data['publicEnabled']),
               onChanged: busy ? null : _togglePublic,
@@ -279,13 +290,45 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen> {
           ],
         ),
         if (boolValue(data['publicEnabled']))
-          _connectionCard('公网', publicConnection, 'public'),
-        const SizedBox(height: 24),
+          _connectionCard('公网', publicConnection, 'public', showTitle: false),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              children: [
+                KeyValue('引擎', engine, dense: true),
+                KeyValue('版本', version, dense: true),
+                KeyValue(
+                  'CPU',
+                  data['cpu'] == null ? '' : '${data['cpu']} vCPU',
+                  dense: true,
+                ),
+                KeyValue(
+                  '内存',
+                  data['memory'] == null ? '' : '${data['memory']} GiB',
+                  dense: true,
+                ),
+                KeyValue(
+                  '存储',
+                  data['storage'] == null ? '' : '${data['storage']} GiB',
+                  dense: true,
+                ),
+                KeyValue('副本', stringValue(data['replicas']), dense: true),
+                KeyValue('创建时间', displayDate(data['createdAt']), dense: true),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        const SectionTitle('健康 · 近 1 小时'),
+        MonitorCharts(monitor: monitor, includeDisk: true),
+        const SizedBox(height: 16),
         const SectionTitle('被谁使用'),
         Card(
           child: jsonList(data['usedBy']).isEmpty
               ? const SizedBox(
-                  height: 100,
+                  height: 80,
                   child: EmptyState(
                     icon: Icons.link_off,
                     title: '当前没有已证实的应用引用',
@@ -295,9 +338,10 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen> {
                   children: [
                     for (final app in jsonList(data['usedBy']))
                       ListTile(
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
                         leading: const Icon(Icons.grid_view_outlined),
                         title: Text(stringValue(app['name'])),
-                        subtitle: Text(stringValue(app['project'])),
                         trailing: StatusBadge(stringValue(app['status'])),
                         onTap: () =>
                             AppScope.of(context, listen: false).openDetail(
@@ -311,43 +355,62 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen> {
                   ],
                 ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         const SectionTitle('结构'),
         _schemaSection(),
-        const SizedBox(height: 24),
-        const SectionTitle('健康 · 近 1 小时'),
-        MonitorCharts(monitor: monitor, includeDisk: true),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         const SectionTitle('Pods'),
         PodsSection(pods: jsonList(data['pods'])),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         const SectionTitle('日志尾部快照'),
         PodLogsPanel(pods: jsonList(data['pods'])),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         const SectionTitle('事件'),
         EventsSection(events: jsonList(data['events'])),
       ],
     );
   }
 
-  Widget _connectionCard(String title, JsonMap connection, String prefix) {
+  Widget _connectionCard(
+    String title,
+    JsonMap connection,
+    String prefix, {
+    bool showTitle = true,
+  }) {
     if (connection.isEmpty) {
       return const SizedBox(
-        height: 120,
+        height: 80,
         child: EmptyState(icon: Icons.link_off, title: '凭证尚未就绪'),
       );
     }
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            KeyValue('Host', stringValue(connection['host']), copy: true),
-            KeyValue('Port', stringValue(connection['port']), copy: true),
-            KeyValue('用户名', stringValue(connection['username']), copy: true),
+            if (showTitle) ...[
+              Text(title, style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 4),
+            ],
+            KeyValue(
+              'Host',
+              stringValue(connection['host']),
+              copy: true,
+              dense: true,
+            ),
+            KeyValue(
+              'Port',
+              stringValue(connection['port']),
+              copy: true,
+              dense: true,
+            ),
+            KeyValue(
+              '用户名',
+              stringValue(connection['username']),
+              copy: true,
+              dense: true,
+            ),
             _secretValue(
               '$prefix-password',
               '密码',
@@ -363,8 +426,9 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen> {
                 'Endpoint',
                 stringValue(connection['endpoint']),
                 copy: true,
+                dense: true,
               ),
-            const Divider(),
+            const Divider(height: 18),
             _secretValue(
               '$prefix-env',
               'DATABASE_URL',
@@ -380,7 +444,7 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen> {
     final visible = revealed.contains(id);
     final display = visible ? value : (value.isEmpty ? '-' : '•' * 16);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
           SizedBox(
@@ -395,6 +459,7 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen> {
           ),
           IconButton(
             tooltip: visible ? '收起' : '显示',
+            visualDensity: VisualDensity.compact,
             onPressed: value.isEmpty
                 ? null
                 : () => setState(
@@ -409,6 +474,7 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen> {
           ),
           IconButton(
             tooltip: '复制',
+            visualDensity: VisualDensity.compact,
             onPressed: value.isEmpty
                 ? null
                 : () => AppScope.of(
@@ -426,7 +492,7 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen> {
     final data = schema;
     if (data == null) {
       return const SizedBox(
-        height: 120,
+        height: 80,
         child: Center(child: CircularProgressIndicator()),
       );
     }
@@ -437,7 +503,7 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen> {
         _ => '数据库结构读取失败。',
       };
       return SizedBox(
-        height: 120,
+        height: 80,
         child: EmptyState(icon: Icons.schema_outlined, title: reason),
       );
     }
@@ -445,19 +511,22 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen> {
     return Card(
       child: databases.isEmpty
           ? const SizedBox(
-              height: 100,
+              height: 80,
               child: EmptyState(icon: Icons.schema_outlined, title: '暂无逻辑库'),
             )
           : Column(
               children: [
                 for (final database in databases)
                   ExpansionTile(
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
                     leading: const Icon(Icons.schema_outlined),
                     title: Text(stringValue(database['name'])),
                     children: [
                       for (final table in listValue(database['tables']))
                         ListTile(
                           dense: true,
+                          visualDensity: VisualDensity.compact,
                           contentPadding: const EdgeInsets.only(
                             left: 58,
                             right: 18,

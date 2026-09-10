@@ -31,15 +31,34 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
   Future<void> _load() async {
     final controller = AppScope.of(context, listen: false);
     try {
-      final values = await Future.wait([
-        controller.invoke('getAppDetail', [widget.name, widget.kind]),
-        controller.invoke('getAppMonitor', [widget.name]),
+      // The workload detail is the primary page data. Monitoring is
+      // supplementary and may be unavailable when the monitoring endpoint or
+      // kubeconfig is temporarily unreachable, so it must not block the page.
+      final loadedDetail = await controller.invoke('getAppDetail', [
+        widget.name,
+        widget.kind,
       ]);
       if (!mounted) return;
       setState(() {
-        detail = jsonMap(values[0]);
-        monitor = jsonMap(values[1]);
+        detail = jsonMap(loadedDetail);
       });
+
+      try {
+        final loadedMonitor = await controller.invoke('getAppMonitor', [
+          widget.name,
+        ]);
+        if (mounted) setState(() => monitor = jsonMap(loadedMonitor));
+      } catch (_) {
+        if (mounted) {
+          setState(
+            () => monitor = {
+              'available': false,
+              'cpu': const <Object?>[],
+              'memory': const <Object?>[],
+            },
+          );
+        }
+      }
     } catch (exception) {
       if (mounted) setState(() => error = exception.toString());
     }
@@ -56,6 +75,25 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
         listen: false,
       ).operate('${action}App', widget.name);
       await _load();
+    } catch (exception) {
+      if (mounted) setState(() => error = exception.toString());
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _openMaintenanceChat() async {
+    final data = detail;
+    if (data == null || busy) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await AppScope.of(context, listen: false).openResourceChat(
+        projectName: stringValue(data['project']),
+        draft: '我想对 ${widget.name} 容器进行如下操作：',
+      );
     } catch (exception) {
       if (mounted) setState(() => error = exception.toString());
     } finally {
@@ -130,38 +168,47 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
     final launchpad = boolValue(data['launchpad']);
     final paused = boolValue(data['paused']) || data['status'] == 'Stopped';
     final pods = jsonList(data['pods']);
-    final project = stringValue(data['project']);
-    final publicUrl = jsonList(data['networks'])
-        .map((network) => stringValue(network['publicUrl']))
-        .where((url) => url.isNotEmpty)
-        .firstOrNull;
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 10, 24, 20),
       children: [
         if (error != null) ...[
           ErrorBanner(
             message: error!,
             onClose: () => setState(() => error = null),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
         ],
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            IconButton(
+              tooltip: '返回',
+              onPressed: AppScope.of(context, listen: false).closeDetail,
+              icon: const Icon(Icons.arrow_back, size: 20),
+            ),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     widget.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.headlineLarge,
                   ),
-                  const SizedBox(height: 7),
+                  const SizedBox(height: 4),
                   StatusBadge(stringValue(data['status'])),
                 ],
               ),
             ),
+            FilledButton.icon(
+              onPressed: busy ? null : _openMaintenanceChat,
+              icon: const Icon(Icons.forum_outlined, size: 17),
+              label: const Text('对话维护'),
+            ),
             if (launchpad) ...[
+              const SizedBox(width: 8),
               OutlinedButton.icon(
                 onPressed: busy
                     ? null
@@ -176,98 +223,73 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
                 label: const Text('重启'),
               ),
               const SizedBox(width: 8),
-              IconButton(
-                tooltip: '删除应用',
-                onPressed: busy ? null : _delete,
-                icon: Icon(Icons.delete_outline, color: context.helios.red),
+              Tooltip(
+                message: '删除应用',
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: context.helios.red,
+                    minimumSize: const Size(34, 34),
+                    padding: EdgeInsets.zero,
+                  ),
+                  onPressed: busy ? null : _delete,
+                  child: const Icon(Icons.delete_outline, size: 17),
+                ),
               ),
             ],
-            IconButton(
-              tooltip: '刷新详情',
-              onPressed: busy ? null : _load,
-              icon: const Icon(Icons.refresh, size: 20),
-            ),
           ],
         ),
-        if (project.isNotEmpty || publicUrl != null) ...[
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (project.isNotEmpty)
-                TextButton.icon(
-                  onPressed: () => AppScope.of(
-                    context,
-                    listen: false,
-                  ).openDetail(DetailRoute('project', project)),
-                  icon: const Icon(Icons.layers_outlined, size: 16),
-                  label: Text(project),
-                ),
-              if (publicUrl != null)
-                TextButton.icon(
-                  onPressed: () => AppScope.of(
-                    context,
-                    listen: false,
-                  ).invoke('openExternal', [publicUrl]),
-                  icon: const Icon(Icons.open_in_new, size: 16),
-                  label: const Text('打开站点'),
-                ),
-            ],
-          ),
-        ],
         if (!launchpad) ...[
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           const ErrorBanner(
-            message: '该工作负载不由 App Launchpad 管理，Helios 仅提供只读信息。',
+            message: '该工作负载不由 App Launchpad 管理，Sealos 仅提供只读信息。',
           ),
         ],
-        const SizedBox(height: 22),
+        const SizedBox(height: 16),
+        const SectionTitle('网络'),
+        _networkSection(jsonList(data['networks'])),
+        const SizedBox(height: 16),
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(14),
             child: Column(
               children: [
-                KeyValue('类型', stringValue(data['kind'])),
+                KeyValue('类型', stringValue(data['kind']), dense: true),
                 KeyValue(
                   boolValue(data['privateImage']) ? '镜像（私有仓库）' : '镜像',
                   stringValue(data['image']),
                   copy: true,
+                  dense: true,
                 ),
                 KeyValue(
                   '副本',
                   '${intValue(data['readyReplicas'])}/${intValue(data['replicas'])}',
+                  dense: true,
                 ),
-                KeyValue('CPU', stringValue(data['cpuLimit'])),
-                KeyValue('内存', stringValue(data['memoryLimit'])),
+                KeyValue('CPU', stringValue(data['cpuLimit']), dense: true),
+                KeyValue('内存', stringValue(data['memoryLimit']), dense: true),
                 if (stringValue(data['gpu']).isNotEmpty)
-                  KeyValue('GPU', stringValue(data['gpu'])),
-                if (stringValue(data['project']).isNotEmpty)
-                  KeyValue('项目', stringValue(data['project'])),
-                KeyValue('创建时间', displayDate(data['createdAt'])),
+                  KeyValue('GPU', stringValue(data['gpu']), dense: true),
+                KeyValue('创建时间', displayDate(data['createdAt']), dense: true),
               ],
             ),
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         const SectionTitle('健康 · 近 1 小时'),
         MonitorCharts(monitor: monitorForCurrentPods(monitor, pods)),
-        const SizedBox(height: 24),
-        const SectionTitle('网络'),
-        _networkSection(jsonList(data['networks'])),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         const SectionTitle('配置'),
         _configSection(data),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         const SectionTitle('持久存储'),
         _storesSection(jsonList(data['stores'])),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         const SectionTitle('Pods'),
         PodsSection(pods: pods),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         const SectionTitle('日志尾部快照'),
         PodLogsPanel(pods: pods),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         const SectionTitle('事件'),
         EventsSection(events: jsonList(data['events'])),
       ],
@@ -275,52 +297,107 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
   }
 
   Widget _networkSection(List<JsonMap> networks) {
-    if (networks.isEmpty) {
+    final endpoints = <_NetworkEndpoint>[];
+    for (final item in networks) {
+      final publicUrl = stringValue(item['publicUrl']);
+      final clusterAddress = stringValue(item['clusterAddress']);
+      if (publicUrl.isNotEmpty) {
+        endpoints.add(
+          _NetworkEndpoint(label: '公网', address: publicUrl, isPublic: true),
+        );
+      }
+      if (clusterAddress.isNotEmpty) {
+        endpoints.add(
+          _NetworkEndpoint(
+            label: '内网',
+            address: clusterAddress,
+            isPublic: false,
+          ),
+        );
+      } else if (publicUrl.isEmpty && intValue(item['nodePort']) > 0) {
+        endpoints.add(
+          _NetworkEndpoint(
+            label: '内网',
+            address: '内网地址暂不可用',
+            isPublic: false,
+            copyable: false,
+          ),
+        );
+      }
+    }
+    if (endpoints.isEmpty) {
       return const SizedBox(
-        height: 100,
+        height: 80,
         child: EmptyState(icon: Icons.language_outlined, title: '暂无网络入口'),
       );
     }
     return Card(
       child: Column(
         children: [
-          for (final item in networks)
-            ListTile(
-              leading: const Icon(Icons.language_outlined),
-              title: Text(
-                '${intValue(item['port'])}/${stringValue(item['appProtocol'], stringValue(item['protocol']))}',
-              ),
-              subtitle: Text(stringValue(item['clusterAddress'])),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (stringValue(item['clusterAddress']).isNotEmpty)
-                    IconButton(
-                      tooltip: '复制集群内地址',
-                      onPressed: () => AppScope.of(
-                        context,
-                        listen: false,
-                      ).invoke('copyText', [item['clusterAddress']]),
-                      icon: const Icon(Icons.content_copy, size: 16),
-                    ),
-                  if (stringValue(item['publicUrl']).isNotEmpty)
-                    TextButton.icon(
-                      onPressed: () => AppScope.of(
-                        context,
-                        listen: false,
-                      ).invoke('openExternal', [item['publicUrl']]),
-                      icon: const Icon(Icons.open_in_new, size: 16),
-                      label: Text(
-                        boolValue(item['customDomain']) ? '自定义域名' : '公网',
-                      ),
-                    )
-                  else if (intValue(item['nodePort']) > 0)
-                    Text(
-                      'NodePort ${intValue(item['nodePort'])}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                ],
-              ),
+          for (var index = 0; index < endpoints.length; index++) ...[
+            _networkEndpointTile(endpoints[index]),
+            if (index < endpoints.length - 1) const Divider(height: 1),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _networkEndpointTile(_NetworkEndpoint endpoint) {
+    final colors = context.helios;
+    final labelColor = endpoint.isPublic ? colors.accent : colors.muted;
+    return ListTile(
+      dense: true,
+      visualDensity: VisualDensity.compact,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+      minLeadingWidth: 22,
+      horizontalTitleGap: 10,
+      leading: Icon(
+        endpoint.isPublic ? Icons.public_outlined : Icons.lan_outlined,
+        size: 18,
+        color: labelColor,
+      ),
+      title: Row(
+        children: [
+          SizedBox(
+            width: 42,
+            child: Text(
+              endpoint.label,
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: labelColor),
+            ),
+          ),
+          Expanded(
+            child: SelectableText(
+              endpoint.address,
+              maxLines: 1,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+        ],
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (endpoint.copyable)
+            IconButton(
+              tooltip: '复制${endpoint.label}地址',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => AppScope.of(
+                context,
+                listen: false,
+              ).invoke('copyText', [endpoint.address]),
+              icon: const Icon(Icons.copy_outlined, size: 16),
+            ),
+          if (endpoint.isPublic)
+            IconButton(
+              tooltip: '打开站点',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => AppScope.of(
+                context,
+                listen: false,
+              ).invoke('openExternal', [endpoint.address]),
+              icon: const Icon(Icons.open_in_new, size: 16),
             ),
         ],
       ),
@@ -332,7 +409,7 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
     final configMaps = jsonList(data['configMaps']);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -344,17 +421,15 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
                 '${jsonMap(data['hpa'])['minReplicas']} - ${jsonMap(data['hpa'])['maxReplicas']} 副本',
               ),
             if (envs.isNotEmpty) ...[
-              const Divider(),
+              const Divider(height: 22),
               Text('环境变量', style: Theme.of(context).textTheme.titleMedium),
-              for (final item in envs)
-                KeyValue(
-                  stringValue(item['key']),
-                  stringValue(item['from'], stringValue(item['value'])),
-                ),
+              const SizedBox(height: 7),
+              _environmentVariables(envs),
             ],
             if (configMaps.isNotEmpty) ...[
-              const Divider(),
+              const Divider(height: 22),
               Text('ConfigMap', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 4),
               for (final item in configMaps)
                 KeyValue(
                   stringValue(item['mountPath']),
@@ -364,6 +439,79 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _environmentVariables(List<JsonMap> envs) {
+    final colors = context.helios;
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.panel,
+        border: Border.all(color: colors.line),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 5, 12, 4),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    '变量名',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+                Expanded(
+                  flex: 4,
+                  child: Text(
+                    '值或引用',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: colors.line),
+          for (var index = 0; index < envs.length; index++) ...[
+            _environmentVariableRow(envs[index]),
+            if (index < envs.length - 1) Divider(height: 1, color: colors.line),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _environmentVariableRow(JsonMap item) {
+    final key = stringValue(item['key']);
+    final from = stringValue(item['from']);
+    final value = stringValue(item['value']);
+    final display = from.isNotEmpty ? '引用：$from' : value;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 3,
+            child: SelectableText(
+              key.isEmpty ? '-' : key,
+              maxLines: 1,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 4,
+            child: SelectableText(
+              display.isEmpty ? '-' : display,
+              maxLines: 1,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -380,6 +528,8 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
         children: [
           for (final store in stores)
             ListTile(
+              dense: true,
+              visualDensity: VisualDensity.compact,
               leading: const Icon(Icons.save_outlined),
               title: Text(stringValue(store['name'])),
               subtitle: Text(stringValue(store['path'])),
@@ -389,4 +539,18 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
       ),
     );
   }
+}
+
+class _NetworkEndpoint {
+  const _NetworkEndpoint({
+    required this.label,
+    required this.address,
+    required this.isPublic,
+    this.copyable = true,
+  });
+
+  final String label;
+  final String address;
+  final bool isPublic;
+  final bool copyable;
 }

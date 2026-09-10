@@ -87,6 +87,16 @@ class RegressionBackend extends HeliosBackend {
         'createdAt': '2026-09-02T06:00:00.000Z',
         'updatedAt': '2026-09-02T06:00:00.000Z',
       },
+      'createChat' => {
+        'id': '22222222-2222-4222-8222-222222222222',
+        'title': '新对话',
+        'workspaceId': 'ns-regression',
+        'eveSessionId': null,
+        'streamIndex': 0,
+        'messages': <Object?>[],
+        'createdAt': '2026-09-02T06:00:00.000Z',
+        'updatedAt': '2026-09-02T06:00:00.000Z',
+      },
       'getChat' => {
         'id': '11111111-1111-4111-8111-111111111111',
         'title': '维护 $longName',
@@ -163,8 +173,21 @@ class RegressionBackend extends HeliosBackend {
         'cpuLimit': '1',
         'memoryLimit': '1Gi',
         'project': longName,
-        'networks': <Object?>[],
-        'envs': <Object?>[],
+        'networks': <Object?>[
+          {
+            'port': 8080,
+            'protocol': 'TCP',
+            'appProtocol': 'HTTP',
+            'clusterAddress':
+                'regression-worker.default.svc.cluster.local:8080',
+            'publicUrl': 'https://regression.example.com',
+            'customDomain': false,
+          },
+        ],
+        'envs': <Object?>[
+          {'key': 'PORT', 'value': '8080'},
+          {'key': 'DATABASE_URL', 'from': 'secret/regression.database-url'},
+        ],
         'configMaps': <Object?>[],
         'stores': <Object?>[],
         'pods': <Object?>[
@@ -190,9 +213,21 @@ class RegressionBackend extends HeliosBackend {
         'version': '16.4.0',
         'phase': 'Running',
         'project': longName,
-        'connection': <String, Object?>{},
-        'publicConnection': <String, Object?>{},
-        'publicEnabled': false,
+        'connection': <String, Object?>{
+          'host': 'regression-db.default.svc.cluster.local',
+          'port': '5432',
+          'username': 'postgres',
+          'password': 'internal-password',
+          'connectionString': 'postgresql://postgres@regression-db:5432/app',
+        },
+        'publicConnection': <String, Object?>{
+          'host': 'db.example.com',
+          'port': '5432',
+          'username': 'postgres',
+          'password': 'public-password',
+          'connectionString': 'postgresql://postgres@db.example.com:5432/app',
+        },
+        'publicEnabled': true,
         'usedBy': <Object?>[],
         'pods': <Object?>[],
         'events': <Object?>[],
@@ -285,6 +320,14 @@ void main() {
     tester,
   ) async {
     final (_, backend) = await pumpDesktop(tester);
+    final inputField = find.byType(TextField).first;
+    expect(tester.getSize(inputField).height, greaterThanOrEqualTo(90));
+    await tester.enterText(inputField, '第一行\n第二行\n第三行\n第四行\n第五行\n第六行');
+    await tester.pumpAndSettle();
+    expect(tester.getSize(inputField).height, greaterThanOrEqualTo(125));
+    expect(tester.takeException(), isNull);
+    await tester.enterText(inputField, '');
+    await tester.pumpAndSettle();
 
     for (final scenario in ['部署 GitHub 项目', '部署本地源代码', '从应用商店部署', '启动一个数据库']) {
       expect(find.text(scenario), findsOneWidget);
@@ -313,50 +356,85 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('project detail centers the three-layer resource topology', (
-    tester,
-  ) async {
-    final (controller, backend) = await pumpDesktop(tester);
-    controller.openDetail(
-      const DetailRoute('project', RegressionBackend.longName),
-    );
-    await tester.pumpAndSettle();
+  testWidgets(
+    'project detail shows header actions and horizontal resource topology',
+    (tester) async {
+      final (controller, backend) = await pumpDesktop(tester);
+      controller.openDetail(
+        const DetailRoute('project', RegressionBackend.longName),
+      );
+      await tester.pumpAndSettle();
 
-    for (final layer in ['网络接入层', '服务层', '数据层']) {
-      expect(find.text(layer), findsOneWidget);
-    }
-    expect(find.text('example.com'), findsOneWidget);
-    expect(find.textContaining('容器 · Deployment'), findsNWidgets(2));
-    expect(find.text('regression-worker'), findsOneWidget);
-    expect(find.text('regression-db'), findsOneWidget);
-    expect(find.text('regression-bucket'), findsOneWidget);
-    expect(find.text('Warning · 内存 91%'), findsOneWidget);
-    expect(find.text('WordPress'), findsNothing);
-    expect(find.text('Sealos'), findsNothing);
-    expect(
-      find.textContaining('${RegressionBackend.longName}  ·  创建于'),
-      findsNothing,
-    );
-    expect(find.textContaining('创建于'), findsOneWidget);
-    expect(find.text('对话维护'), findsOneWidget);
-    expect(find.text('暂停项目'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+      for (final layer in ['网络接入层', '服务层', '数据层']) {
+        expect(find.text(layer), findsNothing);
+      }
+      expect(find.text('example.com'), findsOneWidget);
+      expect(find.textContaining('容器 · Deployment'), findsNWidgets(2));
+      expect(find.text('regression-worker'), findsOneWidget);
+      expect(find.text('regression-db'), findsOneWidget);
+      expect(find.text('regression-bucket'), findsOneWidget);
+      expect(find.byTooltip('Warning · 内存 91%'), findsOneWidget);
+      expect(find.text('91%'), findsOneWidget);
+      expect(find.text('WordPress'), findsNothing);
+      expect(find.text('Sealos'), findsOneWidget);
+      expect(
+        find.textContaining('${RegressionBackend.longName}  ·  创建于'),
+        findsNothing,
+      );
+      expect(find.textContaining('创建于'), findsOneWidget);
+      expect(find.text('对话维护'), findsOneWidget);
+      expect(find.text('暂停'), findsOneWidget);
+      expect(find.text('重启'), findsOneWidget);
+      expect(find.text('删除'), findsOneWidget);
+      expect(find.byTooltip('放大'), findsOneWidget);
+      final before = tester
+          .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+          .transformationController!
+          .value
+          .storage[0];
+      await tester.tap(find.byTooltip('放大'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+            .transformationController!
+            .value
+            .storage[0],
+        greaterThan(before),
+      );
+      await tester.tap(find.byTooltip('适应画布'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
 
-    await tester.tap(find.text('对话维护'));
-    await tester.pumpAndSettle();
-    final composer = tester.widget<TextField>(find.byType(TextField).first);
-    expect(composer.controller?.text, isEmpty);
-    expect(find.text('可创建容器、数据库，调整网络、扩缩容或查看运行状态…'), findsOneWidget);
-    expect(find.byTooltip('打开关联 Project'), findsOneWidget);
-    expect(
-      backend.calls.where((method) => method == 'getOrCreateProjectChat'),
-      hasLength(1),
-    );
+      await tester.tap(find.text('对话维护'));
+      await tester.pumpAndSettle();
+      final composer = tester.widget<TextField>(find.byType(TextField).first);
+      expect(composer.controller?.text, isEmpty);
+      expect(find.text('可创建容器、数据库，调整网络、扩缩容或查看运行状态…'), findsOneWidget);
+      expect(find.byTooltip('打开关联 Project'), findsOneWidget);
+      final projectButton = find.byTooltip('打开关联 Project');
+      for (final width in [940.0, 1600.0]) {
+        tester.view.physicalSize = Size(width, 620);
+        await tester.pumpAndSettle();
+        expect(tester.getRect(projectButton).right, closeTo(width - 13, 1));
+      }
+      expect(
+        find.descendant(
+          of: projectButton,
+          matching: find.byIcon(Icons.layers_outlined),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        backend.calls.where((method) => method == 'getOrCreateProjectChat'),
+        hasLength(1),
+      );
 
-    await tester.tap(find.byTooltip('打开关联 Project'));
-    await tester.pumpAndSettle();
-    expect(find.text('资源拓扑'), findsOneWidget);
-  });
+      await tester.tap(find.byTooltip('打开关联 Project'));
+      await tester.pumpAndSettle();
+      expect(find.text('资源拓扑'), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'minimum desktop window renders detail headers without overflow',
@@ -376,6 +454,87 @@ void main() {
       }
     },
   );
+
+  testWidgets('container detail keeps network and maintenance actions clear', (
+    tester,
+  ) async {
+    final (controller, backend) = await pumpDesktop(tester);
+    controller.openDetail(
+      const DetailRoute('app', RegressionBackend.longName, kind: 'Deployment'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('对话维护'), findsOneWidget);
+    expect(find.text('公网'), findsOneWidget);
+    expect(find.text('内网'), findsOneWidget);
+    expect(find.textContaining('HTTP'), findsNothing);
+    expect(find.textContaining('端口'), findsNothing);
+    expect(find.byTooltip('刷新详情'), findsNothing);
+    expect(find.text('打开站点'), findsNothing);
+    expect(find.byTooltip('打开站点'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.dragUntilVisible(
+      find.text('变量名'),
+      find.byType(ListView).last,
+      const Offset(0, -300),
+    );
+    expect(find.text('变量名'), findsOneWidget);
+    expect(find.text('值或引用'), findsOneWidget);
+    expect(find.byTooltip('复制环境变量'), findsNothing);
+
+    await tester.dragUntilVisible(
+      find.text('对话维护'),
+      find.byType(ListView).last,
+      const Offset(0, 300),
+    );
+    await tester.tap(find.text('对话维护'));
+    await tester.pumpAndSettle();
+    final composer = tester.widget<TextField>(find.byType(TextField).first);
+    expect(
+      composer.controller?.text,
+      '我想对 ${RegressionBackend.longName} 容器进行如下操作：',
+    );
+    expect(find.text('你想完成什么？'), findsNothing);
+    expect(find.text('维护 ${RegressionBackend.longName}'), findsOneWidget);
+    expect(
+      backend.calls.where((method) => method == 'getOrCreateProjectChat'),
+      hasLength(1),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('database detail follows compact resource detail conventions', (
+    tester,
+  ) async {
+    final (controller, backend) = await pumpDesktop(tester);
+    controller.openDetail(
+      const DetailRoute('database', RegressionBackend.longName),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('对话维护'), findsOneWidget);
+    expect(find.text('内网'), findsOneWidget);
+    expect(find.text('公网'), findsOneWidget);
+    expect(find.text('刷新详情'), findsNothing);
+    expect(find.text('问 Sealos'), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('对话维护'));
+    await tester.pumpAndSettle();
+    final composer = tester.widget<TextField>(find.byType(TextField).first);
+    expect(
+      composer.controller?.text,
+      '我想对 ${RegressionBackend.longName} 数据库进行如下操作：',
+    );
+    expect(find.text('你想完成什么？'), findsNothing);
+    expect(find.text('维护 ${RegressionBackend.longName}'), findsOneWidget);
+    expect(
+      backend.calls.where((method) => method == 'getOrCreateProjectChat'),
+      hasLength(1),
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('resource selections do not leak between project and app lists', (
     tester,

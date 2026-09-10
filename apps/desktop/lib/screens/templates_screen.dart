@@ -97,10 +97,11 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 10),
           child: Row(
             children: [
-              Expanded(
+              SizedBox(
+                width: 260,
                 child: TextField(
                   controller: search,
                   onChanged: (_) => setState(() {}),

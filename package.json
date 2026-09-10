@@ -1,6 +1,6 @@
 {
   "name": "helios",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "description": "Deploy to Sealos — agent-first.",
   "workspaces": [
@@ -27,5 +27,8 @@
   },
   "overrides": {
     "ai": "^7.0.58"
+  },
+  "dependencies": {
+    "@rolldown/binding-darwin-arm64": "^1.2.4"
   }
 }

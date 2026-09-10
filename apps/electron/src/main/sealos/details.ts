@@ -337,18 +337,16 @@ export async function fetchAppDetail(
     kind === 'Deployment'
       ? apps.readNamespacedDeployment({ name, namespace })
       : apps.readNamespacedStatefulSet({ name, namespace }),
-    core.listNamespacedService({ namespace }),
-    networking.listNamespacedIngress({ namespace }),
-    core.listNamespacedPod({ namespace }),
-    core.listNamespacedEvent({ namespace }),
-    autoscaling.readNamespacedHorizontalPodAutoscaler({ name, namespace }).catch((err: unknown) => {
-      if (isNotFound(err)) return null
-      throw err
-    }),
-    core.readNamespacedSecret({ name, namespace }).catch((err: unknown) => {
-      if (isNotFound(err)) return null
-      throw err
-    })
+    core.listNamespacedService({ namespace }).catch(() => ({ items: [] })),
+    networking.listNamespacedIngress({ namespace }).catch(() => ({ items: [] })),
+    core.listNamespacedPod({ namespace }).catch(() => ({ items: [] })),
+    core.listNamespacedEvent({ namespace }).catch(() => ({ items: [] })),
+    // HPA and image-pull Secret are optional. A missing API or a transient
+    // failure must not prevent the workload detail page from opening.
+    autoscaling
+      .readNamespacedHorizontalPodAutoscaler({ name, namespace })
+      .catch(() => null),
+    core.readNamespacedSecret({ name, namespace }).catch(() => null)
   ])
 
   // 拉取 pod 模板引用到的全部 ConfigMap（一般 0~2 个）
@@ -364,8 +362,9 @@ export async function fetchAppDetail(
     cmNames.map(async (cmName) => {
       try {
         configMaps.set(cmName, await core.readNamespacedConfigMap({ name: cmName, namespace }))
-      } catch (err) {
-        if (!isNotFound(err)) throw err
+      } catch (_) {
+        // ConfigMap details are supplementary; keep the workload page usable
+        // when a referenced object is gone or the API briefly fails.
       }
     })
   )
@@ -465,9 +464,9 @@ async function fetchMonitorSeries(
 }
 
 export async function fetchAppMonitor(appName: string): Promise<AppMonitor> {
-  const { regionDomain } = loadKube()
-  const kubeconfig = readKubeconfigText()
   try {
+    const { regionDomain } = loadKube()
+    const kubeconfig = readKubeconfigText()
     const [cpu, memory] = await Promise.all([
       fetchMonitorSeries(regionDomain, kubeconfig, appName, 'cpu'),
       fetchMonitorSeries(regionDomain, kubeconfig, appName, 'memory')

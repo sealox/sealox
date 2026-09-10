@@ -492,61 +492,62 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _chatHeader(double inset) {
     final colors = context.helios;
     final title = stringValue(conversation?['title'], '新对话');
-    // The transparent macOS title bar places this content slightly below the
-    // traffic-light row. Lift the header just enough to share that baseline.
     final isMacOS = defaultTargetPlatform == TargetPlatform.macOS;
     final header = Container(
       height: 56,
-      // Keep the title aligned with the centered conversation column, while
-      // the Project shortcut belongs to the window edge rather than that
-      // column. This gives the shortcut a stable far-right position.
-      padding: EdgeInsets.only(left: inset + (isMacOS ? 16 : 0), right: 5),
+      // Keep the conversation title at the main content edge, like the
+      // surrounding page headers. The message column can remain centered.
+      padding: const EdgeInsets.fromLTRB(24, 0, 5, 0),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: colors.line)),
       ),
       child: Row(
         children: [
-          Flexible(
-            fit: FlexFit.loose,
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w600),
+          Expanded(
+            child: Row(
+              children: [
+                Flexible(
+                  fit: FlexFit.loose,
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                PopupMenuButton<String>(
+                  tooltip: '对话操作',
+                  icon: const Icon(Icons.more_horiz, size: 20),
+                  onSelected: (value) {
+                    if (value == 'rename') {
+                      unawaited(_renameChat());
+                    } else if (value == 'archive') {
+                      unawaited(_archiveChat());
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: 'rename',
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.edit_outlined, size: 19),
+                        title: Text('重命名对话'),
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'archive',
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.archive_outlined, size: 19),
+                        title: Text('归档对话'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 8),
-          PopupMenuButton<String>(
-            tooltip: '对话操作',
-            icon: const Icon(Icons.more_horiz, size: 20),
-            onSelected: (value) {
-              if (value == 'rename') {
-                unawaited(_renameChat());
-              } else if (value == 'archive') {
-                unawaited(_archiveChat());
-              }
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: 'rename',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.edit_outlined, size: 19),
-                  title: Text('重命名对话'),
-                ),
-              ),
-              PopupMenuItem(
-                value: 'archive',
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.archive_outlined, size: 19),
-                  title: Text('归档对话'),
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
           if (stringValue(conversation?['projectName']).isNotEmpty)
             IconButton(
               tooltip: '打开关联 Project',
@@ -556,7 +557,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   stringValue(conversation?['projectName']),
                 ),
               ),
-              icon: const Icon(Icons.account_tree_outlined, size: 20),
+              icon: const Icon(Icons.layers_outlined, size: 20),
             ),
         ],
       ),
@@ -578,7 +579,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final width = min(720.0, max(0.0, constraints.maxWidth - 40));
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(vertical: 24),
+        padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
         child: SizedBox(
           width: width,
           child: Column(
@@ -1008,10 +1009,13 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           TextField(
             controller: input,
-            minLines: chatting ? 1 : 2,
+            minLines: chatting ? 1 : 4,
             maxLines: 6,
             textInputAction: TextInputAction.newline,
             decoration: InputDecoration(
+              // The shared search-field theme caps height at 36px.
+              // Let the multiline composer size itself from its line count.
+              constraints: const BoxConstraints(),
               hintText: projectChat
                   ? '可创建容器、数据库，调整网络、扩缩容或查看运行状态…'
                   : chatting

@@ -143,7 +143,7 @@ class _AiProxyScreenState extends State<AiProxyScreen> {
     final models = jsonList(data['models']);
     final points = jsonList(usage['points']);
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
       children: [
         if (error != null) ...[
           ErrorBanner(

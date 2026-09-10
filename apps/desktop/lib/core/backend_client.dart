@@ -112,7 +112,7 @@ class SidecarBackend extends HeliosBackend {
             final detail = _stderrTail.isEmpty
                 ? ''
                 : ': ${_stderrTail.join(' | ')}';
-            _handleFatal('Helios backend exited with code $code$detail');
+            _handleFatal('Sealos backend exited with code $code$detail');
           }
         }),
       );
@@ -277,7 +277,7 @@ class SidecarBackend extends HeliosBackend {
         .firstWhere(
           (path) => File(path).existsSync(),
           orElse: () => throw BackendException(
-            '找不到 Helios backend。先在仓库根目录运行 npm run build:backend。',
+            '找不到 Sealos backend。先在仓库根目录运行 npm run build:backend。',
             code: 'BACKEND_MISSING',
           ),
         );
@@ -319,7 +319,7 @@ class SidecarBackend extends HeliosBackend {
             'Build',
             'Products',
             'Release',
-            'Helios.app',
+            'Sealos.app',
             'Contents',
             'Resources',
             'helios',
@@ -389,7 +389,7 @@ Future<String> selectSidecarNode(
 
   final detail = detected.isEmpty ? '未找到可执行的 Node.js' : detected.join('、');
   throw BackendException(
-    'Helios 桌面后端需要 Node 24.x；检测结果：$detail。'
+    'Sealos 桌面后端需要 Node 24.x；检测结果：$detail。'
     '请通过 npm run dev 启动，或将 HELIOS_NODE_PATH 指向 Node 24 可执行文件。',
     code: 'BACKEND_NODE_INCOMPATIBLE',
   );

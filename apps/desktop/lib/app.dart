@@ -31,7 +31,7 @@ class _HeliosAppState extends State<HeliosApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Helios',
+      title: 'Sealos',
       debugShowCheckedModeBanner: false,
       theme: buildHeliosTheme(),
       darkTheme: buildHeliosTheme(brightness: Brightness.dark),

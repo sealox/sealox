@@ -119,9 +119,9 @@ class _ShellScreenState extends State<ShellScreen> {
     AppScope.of(context, listen: false).selectTab(DesktopTab.home);
   }
 
-  Future<void> _deleteRecentChat(String id) async {
+  Future<void> _archiveRecentChat(String id) async {
     final controller = AppScope.of(context, listen: false);
-    await controller.invoke('deleteChat', [id]);
+    await controller.invoke('archiveChat', [id]);
     await _loadRecentChats(controller, workspaceId ?? '');
   }
 
@@ -162,55 +162,65 @@ class _ShellScreenState extends State<ShellScreen> {
                       setState(() => recentView = value),
                   onNewChat: _startNewChat,
                   onOpenChat: _openRecentChat,
-                  onDeleteChat: _deleteRecentChat,
+                  onArchiveChat: _archiveRecentChat,
                 ),
               Expanded(
-                child: Column(
-                  children: [
-                    if (controller.error != null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                        child: ErrorBanner(
-                          message: controller.error!,
-                          onClose: controller.clearError,
+                child: Padding(
+                  // macOS keeps the collapse control floating over the page.
+                  // Reserve its width so every page header remains clickable.
+                  padding: EdgeInsets.only(
+                    // The floating macOS toggle starts at x=70. Keep the
+                    // entire control and a title gutter outside every page.
+                    left: collapsed && isMacOS ? 112 : 0,
+                  ),
+                  child: Column(
+                    children: [
+                      if (controller.error != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                          child: ErrorBanner(
+                            message: controller.error!,
+                            onClose: controller.clearError,
+                          ),
                         ),
-                      ),
-                    for (final warning in warnings)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                        child: WarningBanner(message: warning),
-                      ),
-                    Expanded(
-                      child: controller.detail == null
-                          ? switch (controller.tab) {
-                              DesktopTab.home => ChatScreen(
-                                key: ValueKey(
-                                  'chat-$chatRevision-${requestedChatId ?? 'new'}',
+                      for (final warning in warnings)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                          child: WarningBanner(message: warning),
+                        ),
+                      Expanded(
+                        child: controller.detail == null
+                            ? switch (controller.tab) {
+                                DesktopTab.home => ChatScreen(
+                                  key: ValueKey(
+                                    'chat-$chatRevision-${requestedChatId ?? 'new'}',
+                                  ),
+                                  initialChatId: requestedChatId,
                                 ),
-                                initialChatId: requestedChatId,
-                              ),
-                              DesktopTab.templates => const TemplatesScreen(),
-                              DesktopTab.projects => const ResourceListScreen(
-                                key: ValueKey('projects'),
-                                type: ResourceType.projects,
-                              ),
-                              DesktopTab.apps => const ResourceListScreen(
-                                key: ValueKey('apps'),
-                                type: ResourceType.apps,
-                              ),
-                              DesktopTab.databases => const ResourceListScreen(
-                                key: ValueKey('databases'),
-                                type: ResourceType.databases,
-                              ),
-                              DesktopTab.storage => const ResourceListScreen(
-                                key: ValueKey('storage'),
-                                type: ResourceType.storage,
-                              ),
-                              DesktopTab.account => const AccountScreen(),
-                            }
-                          : DetailScreen(route: controller.detail!),
-                    ),
-                  ],
+                                DesktopTab.templates => const TemplatesScreen(),
+                                DesktopTab.projects => const ResourceListScreen(
+                                  key: ValueKey('projects'),
+                                  type: ResourceType.projects,
+                                ),
+                                DesktopTab.apps => const ResourceListScreen(
+                                  key: ValueKey('apps'),
+                                  type: ResourceType.apps,
+                                ),
+                                DesktopTab.databases =>
+                                  const ResourceListScreen(
+                                    key: ValueKey('databases'),
+                                    type: ResourceType.databases,
+                                  ),
+                                DesktopTab.storage => const ResourceListScreen(
+                                  key: ValueKey('storage'),
+                                  type: ResourceType.storage,
+                                ),
+                                DesktopTab.account => const AccountScreen(),
+                              }
+                            : DetailScreen(route: controller.detail!),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -251,7 +261,7 @@ class _ExpandedSidebar extends StatelessWidget {
     required this.onRecentViewChanged,
     required this.onNewChat,
     required this.onOpenChat,
-    required this.onDeleteChat,
+    required this.onArchiveChat,
   });
 
   final AppController controller;
@@ -264,7 +274,7 @@ class _ExpandedSidebar extends StatelessWidget {
   final ValueChanged<_RecentView> onRecentViewChanged;
   final VoidCallback onNewChat;
   final ValueChanged<String> onOpenChat;
-  final ValueChanged<String> onDeleteChat;
+  final ValueChanged<String> onArchiveChat;
 
   @override
   Widget build(BuildContext context) {
@@ -298,11 +308,15 @@ class _ExpandedSidebar extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  Image.asset('assets/icon.png', width: 25, height: 25),
+                  Image.asset(
+                    'assets/sealos-logo-black.png',
+                    width: 25,
+                    height: 25,
+                  ),
                   const SizedBox(width: 9),
                   Expanded(
                     child: Text(
-                      'Helios',
+                      'Sealos',
                       style: TextStyle(
                         color: colors.ink,
                         fontSize: 14,
@@ -405,25 +419,11 @@ class _ExpandedSidebar extends StatelessWidget {
     }
     return [
       for (final chat in chats.take(12))
-        ListTile(
-          minTileHeight: 36,
+        _RecentChatTile(
+          chat: chat,
           selected: chat['id'] == selectedChatId,
-          contentPadding: const EdgeInsets.only(left: 9, right: 2),
-          leading: const Icon(Icons.chat_bubble_outline, size: 15),
-          title: Text(
-            stringValue(chat['title'], '新对话'),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: chat['id'] == selectedChatId ? colors.ink : colors.muted,
-              fontSize: 12,
-            ),
-          ),
-          trailing: IconButton(
-            tooltip: '删除对话',
-            onPressed: () => onDeleteChat(stringValue(chat['id'])),
-            icon: const Icon(Icons.close, size: 14),
-          ),
+          colors: colors,
+          onArchive: () => onArchiveChat(stringValue(chat['id'])),
           onTap: () => onOpenChat(stringValue(chat['id'])),
         ),
     ];
@@ -437,8 +437,7 @@ class _ExpandedSidebar extends StatelessWidget {
       for (final project in projects)
         ListTile(
           minTileHeight: 36,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 9),
-          leading: const Icon(Icons.layers_outlined, size: 15),
+          contentPadding: const EdgeInsets.only(left: 14, right: 9),
           title: Text(
             stringValue(project['displayName'], stringValue(project['name'])),
             maxLines: 1,
@@ -663,6 +662,61 @@ class _ResourceNavItem extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _RecentChatTile extends StatefulWidget {
+  const _RecentChatTile({
+    required this.chat,
+    required this.selected,
+    required this.colors,
+    required this.onArchive,
+    required this.onTap,
+  });
+
+  final JsonMap chat;
+  final bool selected;
+  final HeliosPalette colors;
+  final VoidCallback onArchive;
+  final VoidCallback onTap;
+
+  @override
+  State<_RecentChatTile> createState() => _RecentChatTileState();
+}
+
+class _RecentChatTileState extends State<_RecentChatTile> {
+  bool hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => hovered = true),
+      onExit: (_) => setState(() => hovered = false),
+      child: ListTile(
+        minTileHeight: 36,
+        selected: widget.selected,
+        contentPadding: const EdgeInsets.only(left: 14, right: 2),
+        title: Text(
+          stringValue(widget.chat['title'], '新对话'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: widget.selected ? widget.colors.ink : widget.colors.muted,
+            fontSize: 12,
+          ),
+        ),
+        trailing: AnimatedOpacity(
+          opacity: hovered ? 1 : 0,
+          duration: const Duration(milliseconds: 100),
+          child: IconButton(
+            tooltip: '归档会话',
+            onPressed: hovered ? widget.onArchive : null,
+            icon: const Icon(Icons.archive_outlined, size: 15),
+          ),
+        ),
+        onTap: widget.onTap,
       ),
     );
   }

@@ -136,7 +136,7 @@ class _AccountScreenState extends State<AccountScreen> {
         .take(3)
         .toList();
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
       children: [
         if (error != null) ...[
           ErrorBanner(
@@ -145,58 +145,52 @@ class _AccountScreenState extends State<AccountScreen> {
           ),
           const SizedBox(height: 14),
         ],
-        const SectionTitle('账户'),
+        SectionTitle(
+          '账户',
+          trailing: OutlinedButton.icon(
+            onPressed: busy
+                ? null
+                : () async {
+                    if (!await confirmAction(
+                      context,
+                      title: '退出登录',
+                      message: '将停止当前 Agent 并清除 Sealos 登录凭证。',
+                      confirmLabel: '退出登录',
+                    )) {
+                      return;
+                    }
+                    await _run(controller.logout);
+                  },
+            icon: const Icon(Icons.logout, size: 17),
+            label: const Text('退出登录'),
+          ),
+        ),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                KeyValue(
+                _accountRow(
                   '区域',
                   stringValue(
                     status['regionDomain'],
                     stringValue(status['server']),
                   ),
                 ),
-                KeyValue(
-                  'API Server',
-                  stringValue(status['server']),
-                  copy: true,
-                ),
-                KeyValue(
+                _accountRow('API Server', stringValue(status['server'])),
+                _accountRow(
                   '工作空间',
                   stringValue(
                     status['workspaceName'],
                     stringValue(status['workspace']),
                   ),
                 ),
-                KeyValue('命名空间', stringValue(status['namespace'])),
-                KeyValue('登录时间', displayDate(status['authenticatedAt'])),
-                KeyValue(
+                _accountRow('命名空间', stringValue(status['namespace'])),
+                _accountRow('登录时间', displayDate(status['authenticatedAt'])),
+                _accountRow(
                   'kubeconfig',
                   stringValue(status['kubeconfigPath']),
                   copy: true,
-                ),
-                const Divider(),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: OutlinedButton.icon(
-                    onPressed: busy
-                        ? null
-                        : () async {
-                            if (!await confirmAction(
-                              context,
-                              title: '退出登录',
-                              message: '将停止当前 Agent 并清除 Sealos 登录凭证。',
-                              confirmLabel: '退出登录',
-                            )) {
-                              return;
-                            }
-                            await _run(controller.logout);
-                          },
-                    icon: const Icon(Icons.logout, size: 17),
-                    label: const Text('退出登录'),
-                  ),
                 ),
               ],
             ),
@@ -271,11 +265,23 @@ class _AccountScreenState extends State<AccountScreen> {
                 ExpansionTile(
                   tilePadding: EdgeInsets.zero,
                   childrenPadding: const EdgeInsets.only(bottom: 4),
-                  title: const Text('使用自己的 DeepSeek API Key'),
-                  subtitle: Text(
-                    boolValue(model?['configured'])
-                        ? stringValue(model?['hint'], '已配置')
-                        : '可选',
+                  title: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          '使用自己的 DeepSeek API Key',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        boolValue(model?['configured'])
+                            ? stringValue(model?['hint'], '已配置')
+                            : '可选',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
                   ),
                   children: [
                     Row(
@@ -345,7 +351,7 @@ class _AccountScreenState extends State<AccountScreen> {
                   children: [
                     const Icon(Icons.system_update_alt, size: 20),
                     const SizedBox(width: 9),
-                    Expanded(child: Text('Helios $version')),
+                    Expanded(child: Text('Sealos $version')),
                     if (boolValue(update?['available']))
                       FilledButton.icon(
                         onPressed: busy || update?['phase'] == 'downloading'
@@ -392,6 +398,37 @@ class _AccountScreenState extends State<AccountScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _accountRow(String label, String value, {bool copy = false}) {
+    return SizedBox(
+      height: 32,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(label, style: Theme.of(context).textTheme.bodySmall),
+          ),
+          Expanded(
+            child: SelectableText(
+              value.isEmpty ? '-' : value,
+              maxLines: 1,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+          if (copy && value.isNotEmpty)
+            IconButton(
+              tooltip: '复制 Kubeconfig',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => AppScope.of(
+                context,
+                listen: false,
+              ).invoke('copyText', [value]),
+              icon: const Icon(Icons.copy_outlined, size: 16),
+            ),
+        ],
+      ),
     );
   }
 
@@ -481,10 +518,22 @@ class _ExecutorRow extends StatelessWidget {
         enabled ? Icons.bolt_outlined : Icons.terminal_outlined,
         color: enabled ? colors.ink : colors.muted,
       ),
-      title: Text(name),
-      subtitle: Text(
-        available ? (version.isEmpty ? command : version) : '未检测到 $command',
-        style: Theme.of(context).textTheme.bodySmall,
+      dense: true,
+      title: Row(
+        children: [
+          Text(name),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              available
+                  ? (version.isEmpty ? command : version)
+                  : '未检测到 $command',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+        ],
       ),
       trailing: enabled
           ? OutlinedButton(

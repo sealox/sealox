@@ -64,7 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   Image.asset('assets/icon.png', width: 26, height: 26),
                   const SizedBox(width: 9),
                   Text(
-                    'Helios',
+                    'Sealos',
                     style: TextStyle(
                       color: colors.ink,
                       fontSize: 14,

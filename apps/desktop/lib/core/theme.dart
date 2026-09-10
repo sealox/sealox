@@ -275,30 +275,30 @@ ThemeData buildHeliosTheme({Brightness brightness = Brightness.light}) {
     ),
     textTheme: TextTheme(
       headlineLarge: TextStyle(
-        fontSize: 22,
+        fontSize: 20,
         height: 1.3,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w500,
         letterSpacing: 0,
         color: colors.ink,
       ),
       headlineMedium: TextStyle(
         fontSize: 18,
         height: 1.35,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w500,
         letterSpacing: 0,
         color: colors.ink,
       ),
       titleLarge: TextStyle(
         fontSize: 16,
         height: 1.4,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w500,
         letterSpacing: 0,
         color: colors.ink,
       ),
       titleMedium: TextStyle(
         fontSize: 14,
         height: 1.4,
-        fontWeight: FontWeight.w600,
+        fontWeight: FontWeight.w500,
         letterSpacing: 0,
         color: colors.ink,
       ),
@@ -364,6 +364,7 @@ ThemeData buildHeliosTheme({Brightness brightness = Brightness.light}) {
         borderSide: BorderSide(color: colors.line),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      constraints: const BoxConstraints(minHeight: 36, maxHeight: 36),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(

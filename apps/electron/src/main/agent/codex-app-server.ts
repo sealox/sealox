@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'child_process'
 import { createInterface, type Interface } from 'readline'
 import { desktopHost } from '../desktop-host'
+import { codexEnvironment } from './codex-environment'
 import { ProcessOutputTail, redactProcessOutput } from './process-output'
 
 export type CodexRequestId = number | string
@@ -129,7 +130,7 @@ export class CodexAppServerClient {
     const cwd = desktopHost().appRoot
     const proc = spawn(this.command, ['app-server'], {
       cwd,
-      env: process.env,
+      env: await codexEnvironment(),
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true
     })

@@ -1609,6 +1609,41 @@ export async function getChat(id: string): Promise<ChatConversation | null> {
   return cloneRecord(session.record)
 }
 
+async function createConversation(
+  projectName?: string,
+  projectContext?: string
+): Promise<ChatConversation> {
+  const normalizedProject = projectName?.trim() || undefined
+  const context = projectContext?.trim() || undefined
+  const workspaceId = currentWorkspaceId()
+  const now = new Date().toISOString()
+  const record: ChatConversation = {
+    id: randomUUID(),
+    title: normalizedProject ? `维护 ${normalizedProject}` : '新对话',
+    workspaceId,
+    eveSessionId: null,
+    streamIndex: 0,
+    messages: [],
+    ...(normalizedProject ? { projectName: normalizedProject } : {}),
+    ...(context ? { projectContext: context } : {}),
+    createdAt: now,
+    updatedAt: now
+  }
+  const session = makeLive(record)
+  live.set(record.id, session)
+  await persist(session)
+  emitSnapshot(session)
+  return cloneRecord(record)
+}
+
+/** Create a chat that can be opened immediately, optionally linked to a Project. */
+export async function createChat(
+  projectName?: string,
+  projectContext?: string
+): Promise<ChatConversation> {
+  return createConversation(projectName, projectContext)
+}
+
 export async function getOrCreateProjectChat(
   projectName: string,
   projectContext?: string
@@ -1632,32 +1667,15 @@ export async function getOrCreateProjectChat(
       return record
     }
   }
-  const now = new Date().toISOString()
-  const record: ChatConversation = {
-    id: randomUUID(),
-    title: `维护 ${normalized}`,
-    workspaceId,
-    eveSessionId: null,
-    streamIndex: 0,
-    messages: [],
-    projectName: normalized,
-    ...(context ? { projectContext: context } : {}),
-    createdAt: now,
-    updatedAt: now
-  }
-  const session = makeLive(record)
-  live.set(record.id, session)
-  await persist(session)
-  emitSnapshot(session)
-  return cloneRecord(record)
+  return createConversation(normalized, context)
 }
 
 function messageWithProjectContext(record: ChatConversation, text: string): string {
   const context = record.projectContext?.trim()
-  if (!record.projectName || !context) return text
+  if (!record.projectName) return text
   return [
     `当前维护的 Sealos Project：${record.projectName}。`,
-    `项目摘要（仅作上下文，不向用户展示）：${context}`,
+    ...(context ? [`项目摘要（仅作上下文，不向用户展示）：${context}`] : []),
     '高风险操作（删除、暂停、公开暴露、覆盖数据）必须先说明影响并等待确认。',
     '',
     `用户当前请求：${text}`

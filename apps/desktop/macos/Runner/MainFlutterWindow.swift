@@ -19,7 +19,7 @@ class MainFlutterWindow: NSWindow {
     self.setFrame(windowFrame, display: true)
     self.setContentSize(NSSize(width: 1280, height: 800))
     self.minSize = NSSize(width: 1024, height: 680)
-    self.title = "Helios"
+    self.title = "Sealos"
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 

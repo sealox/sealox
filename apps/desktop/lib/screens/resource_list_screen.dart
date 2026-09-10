@@ -40,10 +40,10 @@ class _ResourceListScreenState extends State<ResourceListScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 10),
           child: Row(
             children: [
-              Text(_label, style: Theme.of(context).textTheme.titleMedium),
+              Text(_label, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(width: 16),
               SizedBox(
                 width: 260,

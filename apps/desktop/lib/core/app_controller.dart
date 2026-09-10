@@ -84,6 +84,22 @@ class AppController extends ChangeNotifier {
     openChatWithDraft(null, text);
   }
 
+  Future<void> openResourceChat({
+    required String? projectName,
+    required String draft,
+  }) async {
+    final project = projectName?.trim() ?? '';
+    final conversation = jsonMap(
+      await invoke<Object?>(
+        project.isEmpty ? 'createChat' : 'getOrCreateProjectChat',
+        project.isEmpty ? const <Object?>[] : [project],
+      ),
+    );
+    final chatId = stringValue(conversation['id']);
+    if (chatId.isEmpty) throw StateError('无法打开关联的对话');
+    openChatWithDraft(chatId, draft);
+  }
+
   void openChatWithDraft(String? chatId, String text) {
     chatDraft = text;
     chatRequestedId = chatId;

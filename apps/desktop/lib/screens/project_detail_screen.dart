@@ -225,16 +225,6 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     ],
   );
 
-  Future<void> _showOtherDetails(JsonMap item) => _showResourceDetails(
-    icon: _otherIcon(stringValue(item['kind'])),
-    title: stringValue(item['name']),
-    values: [
-      ('类型', stringValue(item['kind'])),
-      if (stringValue(item['note']).isNotEmpty)
-        ('说明', stringValue(item['note'])),
-    ],
-  );
-
   Future<void> _showResourceDetails({
     required IconData icon,
     required String title,
@@ -270,19 +260,46 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final data = detail;
-    if (data == null && error == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
     if (data == null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: ErrorBanner(
-          message: error!,
-          onClose: () {
-            setState(() => error = null);
-            _load();
-          },
-        ),
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                IconButton(
+                  tooltip: '返回',
+                  onPressed: AppScope.of(context, listen: false).closeDetail,
+                  icon: const Icon(Icons.arrow_back),
+                ),
+                Expanded(
+                  child: Text(
+                    widget.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: error == null
+                ? const Center(child: CircularProgressIndicator())
+                : Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: ErrorBanner(
+                        message: error!,
+                        onClose: () {
+                          setState(() => error = null);
+                          _load();
+                        },
+                      ),
+                    ),
+                  ),
+          ),
+        ],
       );
     }
     final apps = jsonList(data['apps']);
@@ -292,7 +309,6 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     final databases = jsonList(data['databases']);
     final buckets = jsonList(data['buckets']);
     final cronjobs = jsonList(data['cronjobs']);
-    final others = jsonList(data['others']);
     final controllableStatuses = <String>[
       ...managedApps.map((item) => stringValue(item['status'])),
       ...databases.map((item) => _databaseStatus(stringValue(item['phase']))),
@@ -307,140 +323,130 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
         buckets.isNotEmpty ||
         cronjobs.isNotEmpty;
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 18, 24, 32),
+    return Column(
       children: [
-        if (error != null) ...[
-          ErrorBanner(
-            message: error!,
-            onClose: () => setState(() => error = null),
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 24, 12),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: context.helios.line)),
           ),
-          const SizedBox(height: 14),
-        ],
-        LayoutBuilder(
-          builder: (context, constraints) => _projectHeader(
-            data,
-            compact: constraints.maxWidth < 760,
-            canOperate: canOperate,
-            allStopped: allStopped,
+          child: LayoutBuilder(
+            builder: (context, constraints) => _projectHeader(
+              data,
+              canOperate: canOperate,
+              allStopped: allStopped,
+            ),
           ),
         ),
-        const SizedBox(height: 28),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                '资源拓扑',
-                style: Theme.of(context).textTheme.titleLarge,
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            children: [
+              if (error != null)
+                ErrorBanner(
+                  message: error!,
+                  onClose: () => setState(() => error = null),
+                ),
+              Text(
+                '创建于 ${displayDate(data['createdAt'])}',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
-            ),
-            _HealthLegend(health: _Health.healthy),
-            const SizedBox(width: 13),
-            _HealthLegend(health: _Health.warning),
-            const SizedBox(width: 13),
-            _HealthLegend(health: _Health.error),
-            const SizedBox(width: 13),
-            _HealthLegend(health: _Health.paused),
-          ],
-        ),
-        const SizedBox(height: 10),
-        if (!hasTopologyResources)
-          const SizedBox(
-            height: 180,
-            child: EmptyState(
-              icon: Icons.account_tree_outlined,
-              title: '项目中暂无资源',
-            ),
-          )
-        else
-          ProjectTopology(
-            apps: apps,
-            databases: databases,
-            buckets: buckets,
-            cronjobs: cronjobs,
-            links: jsonList(data['links']),
-            onOpenApp: _openApp,
-            onOpenDatabase: _openDatabase,
-            onOpenNetwork: _showNetworkDetails,
-            onOpenBucket: _showBucketDetails,
-            onOpenCronJob: _showCronJobDetails,
+              if (stringValue(data['description']).isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  stringValue(data['description']),
+                  style: TextStyle(color: context.helios.muted),
+                ),
+              ],
+              const SizedBox(height: 28),
+              Text('资源拓扑', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 10),
+              if (!hasTopologyResources)
+                const SizedBox(
+                  height: 180,
+                  child: EmptyState(
+                    icon: Icons.account_tree_outlined,
+                    title: '项目中暂无资源',
+                  ),
+                )
+              else
+                ProjectTopology(
+                  apps: apps,
+                  databases: databases,
+                  buckets: buckets,
+                  cronjobs: cronjobs,
+                  links: jsonList(data['links']),
+                  onOpenApp: _openApp,
+                  onOpenDatabase: _openDatabase,
+                  onOpenNetwork: _showNetworkDetails,
+                  onOpenBucket: _showBucketDetails,
+                  onOpenCronJob: _showCronJobDetails,
+                ),
+            ],
           ),
-        if (others.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          _SupportingResources(items: others, onOpen: _showOtherDetails),
-        ],
+        ),
       ],
     );
   }
 
   Widget _projectHeader(
     JsonMap data, {
-    required bool compact,
     required bool canOperate,
     required bool allStopped,
   }) {
-    final information = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final information = Row(
       children: [
-        Text(
-          stringValue(data['displayName'], widget.name),
-          style: Theme.of(context).textTheme.headlineLarge,
+        IconButton(
+          tooltip: '返回',
+          onPressed: AppScope.of(context, listen: false).closeDetail,
+          icon: const Icon(Icons.arrow_back, size: 20),
         ),
-        const SizedBox(height: 6),
-        Text(
-          '创建于 ${displayDate(data['createdAt'])}',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        if (stringValue(data['description']).isNotEmpty) ...[
-          const SizedBox(height: 11),
-          Text(
-            stringValue(data['description']),
-            style: Theme.of(context).textTheme.bodyMedium
-                ?.copyWith(color: context.helios.muted),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Tooltip(
+            message: stringValue(data['displayName'], widget.name),
+            child: Text(
+              stringValue(data['displayName'], widget.name),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
           ),
-        ],
+        ),
       ],
     );
-    final actions = Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      alignment: WrapAlignment.end,
+    final actions = Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         FilledButton.icon(
           onPressed: busy ? null : () => unawaited(_startConversation()),
-          icon: const Icon(Icons.auto_awesome_outlined, size: 17),
+          icon: const Icon(Icons.forum_outlined, size: 17),
           label: const Text('对话维护'),
         ),
+        const SizedBox(width: 8),
         if (canOperate)
           OutlinedButton.icon(
             onPressed: busy
                 ? null
                 : () => _operate(allStopped ? 'start' : 'pause'),
             icon: Icon(allStopped ? Icons.play_arrow : Icons.pause, size: 17),
-            label: Text(allStopped ? '恢复项目' : '暂停项目'),
+            label: Text(allStopped ? '恢复' : '暂停'),
           ),
-        IconButton(
-          tooltip: '删除项目',
+        if (canOperate) const SizedBox(width: 8),
+        OutlinedButton.icon(
           onPressed: busy ? null : _delete,
-          icon: Icon(Icons.delete_outline, color: context.helios.red),
+          icon: Icon(Icons.delete_outline, size: 18, color: context.helios.red),
+          label: const Text('删除'),
         ),
-        IconButton(
-          tooltip: '刷新拓扑',
-          onPressed: busy ? null : _load,
-          icon: const Icon(Icons.refresh, size: 19),
-        ),
+        if (canOperate) const SizedBox(width: 8),
+        if (canOperate)
+          OutlinedButton.icon(
+            onPressed: busy ? null : () => _operate('restart'),
+            icon: const Icon(Icons.restart_alt, size: 18),
+            label: const Text('重启'),
+          ),
       ],
     );
-    if (compact) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          information,
-          const SizedBox(height: 14),
-          Align(alignment: Alignment.centerLeft, child: actions),
-        ],
-      );
-    }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -484,6 +490,24 @@ class ProjectTopology extends StatefulWidget {
 
 class _ProjectTopologyState extends State<ProjectTopology> {
   String? hoveredId;
+  final transformation = TransformationController();
+  bool panEnabled = true;
+  Size? fittedSize;
+
+  @override
+  void dispose() {
+    transformation.dispose();
+    super.dispose();
+  }
+
+  void _zoom(double factor) {
+    final current = transformation.value.storage[0];
+    final next = (current * factor).clamp(0.35, 2.0);
+    setState(() {
+      transformation.value = transformation.value.clone()
+        ..scaleByDouble(next / current, next / current, 1, 1);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -612,62 +636,133 @@ class _ProjectTopologyState extends State<ProjectTopology> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final geometry = _TopologyGeometry.calculate(
-          constraints.maxWidth,
-          layers,
+        final canvasWidth = math.max(1100.0, constraints.maxWidth);
+        final geometry = _TopologyGeometry.calculate(canvasWidth, layers);
+        final viewportHeight = math.max(
+          460.0,
+          math.min(720.0, MediaQuery.sizeOf(context).height - 260),
         );
-        return SizedBox(
-          height: geometry.height,
+        final viewport = Size(constraints.maxWidth, viewportHeight);
+        if (fittedSize != viewport) {
+          fittedSize = viewport;
+          final scale =
+              (math.min(
+                        constraints.maxWidth / canvasWidth,
+                        viewportHeight / geometry.height,
+                      ) *
+                      0.9)
+                  .clamp(0.35, 1.0);
+          transformation.value = Matrix4.identity()
+            ..translateByDouble(
+              (constraints.maxWidth - canvasWidth * scale) / 2,
+              (viewportHeight - geometry.height * scale) / 2,
+              0,
+              1,
+            )
+            ..scaleByDouble(scale, scale, 1, 1);
+        }
+        return Container(
+          height: viewportHeight,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: context.helios.surface,
+            border: Border.all(color: context.helios.line),
+            borderRadius: BorderRadius.circular(10),
+          ),
           child: Stack(
-            clipBehavior: Clip.none,
             children: [
               Positioned.fill(
-                child: CustomPaint(
-                  painter: _TopologyPainter(
-                    bands: geometry.bands,
-                    nodes: geometry.nodes,
-                    edges: edges,
-                    hoveredId: hoveredId,
-                    palette: context.helios,
+                child: InteractiveViewer(
+                  transformationController: transformation,
+                  constrained: false,
+                  panEnabled: panEnabled,
+                  minScale: 0.35,
+                  maxScale: 2,
+                  boundaryMargin: const EdgeInsets.all(400),
+                  child: SizedBox(
+                    width: canvasWidth,
+                    height: geometry.height,
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: CustomPaint(
+                            painter: _TopologyPainter(
+                              bands: geometry.bands,
+                              nodes: geometry.nodes,
+                              edges: edges,
+                              hoveredId: hoveredId,
+                              palette: context.helios,
+                            ),
+                          ),
+                        ),
+                        for (final layer in layers)
+                          for (final node in layer.nodes)
+                            Positioned.fromRect(
+                              rect: geometry.nodes[node.id]!,
+                              child: _TopologyNodeView(
+                                node: node,
+                                dimmed:
+                                    hoveredId != null &&
+                                    !related.contains(node.id),
+                                onEnter: () =>
+                                    setState(() => hoveredId = node.id),
+                                onExit: () {
+                                  if (hoveredId == node.id) {
+                                    setState(() => hoveredId = null);
+                                  }
+                                },
+                                onTap: () => _openNode(node),
+                              ),
+                            ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-              for (var i = 0; i < layers.length; i++)
-                Positioned(
-                  left: 14,
-                  top: geometry.bands[i].top + 17,
-                  width: _TopologyGeometry.labelWidth - 26,
+              Positioned(
+                top: 12,
+                right: 12,
+                child: Material(
+                  color: context.helios.panel,
+                  borderRadius: BorderRadius.circular(10),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        layers[i].title,
-                        style: Theme.of(context).textTheme.labelLarge,
+                      IconButton(
+                        tooltip: '适应画布',
+                        onPressed: () {
+                          final scale =
+                              (math.min(
+                                        constraints.maxWidth / canvasWidth,
+                                        viewportHeight / geometry.height,
+                                      ) *
+                                      0.9)
+                                  .clamp(0.35, 2.0);
+                          transformation.value = Matrix4.identity()
+                            ..translateByDouble(
+                              (constraints.maxWidth - canvasWidth * scale) / 2,
+                              (viewportHeight - geometry.height * scale) / 2,
+                              0,
+                              1,
+                            )
+                            ..scaleByDouble(scale, scale, 1, 1);
+                        },
+                        icon: const Icon(Icons.fit_screen, size: 20),
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        layers[i].nodes.isEmpty ? '暂无资源' : layers[i].subtitle,
-                        style: Theme.of(context).textTheme.bodySmall,
+                      IconButton(
+                        tooltip: '放大',
+                        onPressed: () => _zoom(1.2),
+                        icon: const Icon(Icons.add, size: 20),
+                      ),
+                      IconButton(
+                        tooltip: '缩小',
+                        onPressed: () => _zoom(1 / 1.2),
+                        icon: const Icon(Icons.remove, size: 20),
                       ),
                     ],
                   ),
                 ),
-              for (final layer in layers)
-                for (final node in layer.nodes)
-                  Positioned.fromRect(
-                    rect: geometry.nodes[node.id]!,
-                    child: _TopologyNodeView(
-                      node: node,
-                      dimmed: hoveredId != null && !related.contains(node.id),
-                      onEnter: () => setState(() => hoveredId = node.id),
-                      onExit: () {
-                        if (hoveredId == node.id) {
-                          setState(() => hoveredId = null);
-                        }
-                      },
-                      onTap: () => _openNode(node),
-                    ),
-                  ),
+              ),
             ],
           ),
         );
@@ -710,6 +805,30 @@ class _TopologyNodeView extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.helios;
     final color = _healthColor(node.health, colors);
+    final network = node.type == _NodeType.network;
+    final usage = jsonMap(node.item['usage']);
+    Widget dot() => Container(
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(color: color.withValues(alpha: 0.22), spreadRadius: 3),
+        ],
+      ),
+    );
+    Widget metric(IconData icon, String label, String value) => Tooltip(
+      message: label,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: colors.muted),
+          const SizedBox(width: 4),
+          Text(value, style: Theme.of(context).textTheme.bodySmall),
+        ],
+      ),
+    );
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 140),
       opacity: dimmed ? 0.32 : 1,
@@ -720,151 +839,130 @@ class _TopologyNodeView extends StatelessWidget {
         child: Material(
           color: colors.surface,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(6),
-            side: BorderSide(color: color.withValues(alpha: 0.38)),
+            borderRadius: BorderRadius.circular(9),
+            side: BorderSide(color: colors.lineStrong),
           ),
+          clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: onTap,
-            borderRadius: BorderRadius.circular(6),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(11, 9, 10, 8),
-              child: Row(
-                children: [
-                  Container(
-                    width: 30,
-                    height: 30,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.09),
-                      borderRadius: BorderRadius.circular(5),
+            child: Column(
+              children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
                     ),
-                    child: Icon(_nodeIcon(node.type), size: 17, color: color),
-                  ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        Text(
-                          node.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.labelLarge,
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: colors.panel,
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          child: Icon(
+                            _nodeIcon(node.type),
+                            size: 21,
+                            color: colors.ink,
+                          ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          node.subtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        const SizedBox(height: 3),
-                        Row(
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: color,
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Tooltip(
+                                message: node.title,
+                                child: Text(
+                                  node.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.labelLarge,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 5),
-                            Expanded(
-                              child: Text(
-                                node.pressure ??
-                                    _healthLabel(node.health, node.type),
+                              const SizedBox(height: 5),
+                              Text(
+                                node.subtitle,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(color: color),
+                                style: Theme.of(context).textTheme.bodySmall,
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
+                        const SizedBox(width: 10),
+                        if (network)
+                          Tooltip(
+                            message: _healthLabel(node.health, node.type),
+                            child: dot(),
+                          )
+                        else
+                          Icon(
+                            Icons.chevron_right,
+                            size: 20,
+                            color: colors.ink,
+                          ),
                       ],
                     ),
                   ),
-                  Icon(Icons.chevron_right, size: 16, color: colors.subtle),
-                ],
-              ),
+                ),
+                if (!network)
+                  Container(
+                    height: 40,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    decoration: BoxDecoration(
+                      border: Border(top: BorderSide(color: colors.line)),
+                    ),
+                    child: Row(
+                      children: [
+                        dot(),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Tooltip(
+                            message:
+                                node.pressure ??
+                                _healthLabel(node.health, node.type),
+                            child: Text(
+                              _healthLabel(node.health, node.type),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: color, fontSize: 12),
+                            ),
+                          ),
+                        ),
+                        if (usage['cpuPercent'] is num) ...[
+                          metric(
+                            Icons.memory_outlined,
+                            'CPU 使用率',
+                            '${(usage['cpuPercent'] as num).round()}%',
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        if (usage['memoryPercent'] is num) ...[
+                          metric(
+                            Icons.developer_board_outlined,
+                            '内存使用率',
+                            '${(usage['memoryPercent'] as num).round()}%',
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        if (node.type == _NodeType.service)
+                          metric(
+                            Icons.layers_outlined,
+                            '就绪 / 总副本数',
+                            '${intValue(node.item['readyReplicas'])}/${intValue(node.item['replicas'])}',
+                          ),
+                      ],
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
       ),
-    );
-  }
-}
-
-class _SupportingResources extends StatelessWidget {
-  const _SupportingResources({required this.items, required this.onOpen});
-
-  final List<JsonMap> items;
-  final ValueChanged<JsonMap> onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: context.helios.line)),
-      ),
-      child: ExpansionTile(
-        tilePadding: EdgeInsets.zero,
-        childrenPadding: const EdgeInsets.only(bottom: 6),
-        title: Text(
-          '配套资源 ${items.length}',
-          style: Theme.of(context).textTheme.labelLarge,
-        ),
-        subtitle: const Text('配置、凭证、服务账号和 Kubernetes 配套对象'),
-        children: [
-          Wrap(
-            spacing: 7,
-            runSpacing: 7,
-            children: [
-              for (final item in items)
-                ActionChip(
-                  avatar: Icon(_otherIcon(stringValue(item['kind'])), size: 15),
-                  label: Text(
-                    '${stringValue(item['kind'])} · ${stringValue(item['name'])}',
-                  ),
-                  onPressed: () => onOpen(item),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HealthLegend extends StatelessWidget {
-  const _HealthLegend({required this.health});
-
-  final _Health health;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(
-            color: _healthColor(health, context.helios),
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 5),
-        Text(switch (health) {
-          _Health.healthy => '正常',
-          _Health.warning => 'Warning',
-          _Health.error => 'Error',
-          _Health.paused => '已暂停',
-          _ => '未知',
-        }, style: Theme.of(context).textTheme.bodySmall),
-      ],
     );
   }
 }
@@ -916,11 +1014,6 @@ class _TopologyGeometry {
     required this.nodes,
   });
 
-  static const labelWidth = 112.0;
-  static const nodeHeight = 78.0;
-  static const gap = 12.0;
-  static const bandGap = 16.0;
-
   final double height;
   final List<Rect> bands;
   final Map<String, Rect> nodes;
@@ -929,49 +1022,37 @@ class _TopologyGeometry {
     double width,
     List<_TopologyLayer> layers,
   ) {
-    final bands = <Rect>[];
     final nodes = <String, Rect>{};
-    var top = 0.0;
-    final contentWidth = math.max(120.0, width - labelWidth - 16);
-    final columns = math.max(
-      1,
-      math.min(4, ((contentWidth + gap) / (168 + gap)).floor()),
+    final active = layers.where((layer) => layer.nodes.isNotEmpty).toList();
+    const nodeWidth = 290.0;
+    const spacing = 48.0;
+    final count = active.fold<int>(
+      0,
+      (value, layer) => math.max(value, layer.nodes.length),
     );
-    final nodeWidth = math.min(
-      214.0,
-      (contentWidth - gap * (columns - 1)) / columns,
-    );
-
-    for (final layer in layers) {
-      final rows = math.max(1, (layer.nodes.length / columns).ceil());
-      final bandHeight = math.max(
-        94.0,
-        16 + rows * nodeHeight + math.max(0, rows - 1) * gap + 16,
-      );
-      bands.add(Rect.fromLTWH(0, top, width, bandHeight));
-      for (var row = 0; row < rows; row++) {
-        final rowStart = row * columns;
-        final count = math.min(columns, layer.nodes.length - rowStart);
-        if (count <= 0) continue;
-        final used = count * nodeWidth + math.max(0, count - 1) * gap;
-        final start = labelWidth + math.max(0, (contentWidth - used) / 2);
-        for (var column = 0; column < count; column++) {
-          final node = layer.nodes[rowStart + column];
-          nodes[node.id] = Rect.fromLTWH(
-            start + column * (nodeWidth + gap),
-            top + 16 + row * (nodeHeight + gap),
-            nodeWidth,
-            nodeHeight,
-          );
-        }
+    final height = math.max(540.0, count * (120 + spacing) + 100);
+    final columnGap = active.length <= 1
+        ? 0.0
+        : (width - 120 - nodeWidth * active.length) / (active.length - 1);
+    for (var column = 0; column < active.length; column++) {
+      final layer = active[column];
+      final usedHeight = layer.nodes.length * (120 + spacing) - spacing;
+      for (var row = 0; row < layer.nodes.length; row++) {
+        final node = layer.nodes[row];
+        final network = node.type == _NodeType.network;
+        nodes[node.id] = Rect.fromLTWH(
+          active.length == 1
+              ? (width - nodeWidth) / 2
+              : 60 + column * (nodeWidth + columnGap),
+          (height - usedHeight) / 2 +
+              row * (120 + spacing) +
+              (network ? 24 : 0),
+          nodeWidth,
+          network ? 72 : 120,
+        );
       }
-      top += bandHeight + bandGap;
     }
-    return _TopologyGeometry(
-      height: math.max(0, top - bandGap),
-      bands: bands,
-      nodes: nodes,
-    );
+    return _TopologyGeometry(height: height, bands: const [], nodes: nodes);
   }
 }
 
@@ -992,20 +1073,11 @@ class _TopologyPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final bandPaint = Paint()..color = palette.panel;
-    final borderPaint = Paint()
-      ..color = palette.line
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    for (final band in bands) {
-      final shape = RRect.fromRectAndRadius(band, const Radius.circular(6));
-      canvas.drawRRect(shape, bandPaint);
-      canvas.drawRRect(shape, borderPaint);
-      canvas.drawLine(
-        Offset(_TopologyGeometry.labelWidth, band.top + 12),
-        Offset(_TopologyGeometry.labelWidth, band.bottom - 12),
-        borderPaint,
-      );
+    final dotPaint = Paint()..color = palette.line.withValues(alpha: 0.55);
+    for (double x = 24; x < size.width; x += 28) {
+      for (double y = 24; y < size.height; y += 28) {
+        canvas.drawCircle(Offset(x, y), 0.65, dotPaint);
+      }
     }
 
     for (final edge in edges) {
@@ -1025,28 +1097,20 @@ class _TopologyPainter extends CustomPainter {
         ..color = color
         ..style = PaintingStyle.stroke
         ..strokeWidth = highlighted ? 2.2 : 1.35;
-      final sameLayer = (from.top - to.top).abs() < 1;
-      final start = sameLayer
-          ? Offset(from.center.dx, from.top)
-          : Offset(from.center.dx, from.bottom);
-      final end = Offset(to.center.dx, to.top);
+      final sameLayer = (from.left - to.left).abs() < 1;
+      final start = from.centerRight;
+      final end = sameLayer ? to.centerRight : to.centerLeft;
       final path = Path()..moveTo(start.dx, start.dy);
-      if (sameLayer) {
-        final routeY = math.max(2.0, math.min(from.top, to.top) - 9);
-        path
-          ..cubicTo(start.dx, routeY, start.dx, routeY, start.dx, routeY)
-          ..lineTo(end.dx, routeY)
-          ..cubicTo(end.dx, routeY, end.dx, routeY, end.dx, end.dy);
-      } else {
-        final middle = (start.dy + end.dy) / 2;
-        path.cubicTo(start.dx, middle, end.dx, middle, end.dx, end.dy);
+      final bend = sameLayer ? from.right + 44 : (start.dx + end.dx) / 2;
+      path.cubicTo(bend, start.dy, bend, end.dy, end.dx, end.dy);
+      for (final metric in path.computeMetrics()) {
+        for (double distance = 0; distance < metric.length; distance += 11) {
+          canvas.drawPath(
+            metric.extractPath(distance, math.min(distance + 6, metric.length)),
+            paint,
+          );
+        }
       }
-      canvas.drawPath(path, paint);
-      final arrow = Path()
-        ..moveTo(end.dx - 4, end.dy - 6)
-        ..lineTo(end.dx, end.dy)
-        ..lineTo(end.dx + 4, end.dy - 6);
-      canvas.drawPath(arrow, paint);
     }
   }
 
@@ -1141,19 +1205,6 @@ IconData _nodeIcon(_NodeType type) => switch (type) {
   _NodeType.database => Icons.storage_outlined,
   _NodeType.bucket => Icons.inventory_2_outlined,
   _NodeType.cronjob => Icons.schedule_outlined,
-};
-
-IconData _otherIcon(String kind) => switch (kind) {
-  'Secret' => Icons.key_outlined,
-  'ConfigMap' => Icons.description_outlined,
-  'Service' => Icons.hub_outlined,
-  'PVC' => Icons.save_outlined,
-  'Certificate' || 'Issuer' => Icons.verified_user_outlined,
-  'ServiceAccount' ||
-  'Role' ||
-  'RoleBinding' => Icons.admin_panel_settings_outlined,
-  'Job' => Icons.task_alt_outlined,
-  _ => Icons.widgets_outlined,
 };
 
 String _bucketPolicy(String policy) => switch (policy) {

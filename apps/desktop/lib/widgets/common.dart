@@ -31,7 +31,7 @@ class BrandLoading extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.asset('assets/icon.png', width: 44, height: 44),
+            Image.asset('assets/sealos-logo-black.png', width: 44, height: 44),
             const SizedBox(height: 16),
             const SizedBox(
               width: 120,
@@ -235,16 +235,23 @@ class SectionTitle extends StatelessWidget {
 }
 
 class KeyValue extends StatelessWidget {
-  const KeyValue(this.label, this.value, {this.copy = false, super.key});
+  const KeyValue(
+    this.label,
+    this.value, {
+    this.copy = false,
+    this.dense = false,
+    super.key,
+  });
 
   final String label;
   final String value;
   final bool copy;
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
+      padding: EdgeInsets.symmetric(vertical: dense ? 4 : 7),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -256,6 +263,7 @@ class KeyValue extends StatelessWidget {
           if (copy && value.isNotEmpty)
             IconButton(
               tooltip: '复制',
+              visualDensity: dense ? VisualDensity.compact : null,
               onPressed: () => AppScope.of(
                 context,
                 listen: false,
