@@ -61,6 +61,7 @@ import { clearDeepseekKey, getModelSettings, saveDeepseekKey } from './model-set
 import { getAgentExecutors, setAgentExecutor } from './agent-executors'
 import { downloadUpdate, getUpdateStatus, startUpdateChecker, stopUpdateChecker } from './update'
 import { desktopHost } from './desktop-host'
+import { listStorageObjects } from './sealos/storage'
 
 export const DESKTOP_METHODS = [
   'getAppVersion',
@@ -125,7 +126,8 @@ export const DESKTOP_METHODS = [
   'respondChat',
   'renameChat',
   'archiveChat',
-  'deleteChat'
+  'deleteChat',
+  'listStorageObjects'
 ] as const
 
 export type DesktopMethod = (typeof DESKTOP_METHODS)[number]
@@ -300,6 +302,8 @@ export async function invokeDesktopMethod(
       return archiveChat(String(args[0]))
     case 'deleteChat':
       return deleteChat(String(args[0]))
+    case 'listStorageObjects':
+      return listStorageObjects(String(args[0]), String(args[1] ?? ''))
   }
 }
 

@@ -143,7 +143,7 @@ class _ResourceListScreenState extends State<ResourceListScreen> {
         ResourceType.databases => () => controller.openDetail(
           DetailRoute('database', name),
         ),
-        ResourceType.storage => null,
+        ResourceType.storage => () => controller.openDetail(DetailRoute('storage', name)),
       },
       trailing: canSelect || menu != null
           ? Row(

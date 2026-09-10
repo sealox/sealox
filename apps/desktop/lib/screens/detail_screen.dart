@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/app_controller.dart';
 import 'app_detail_screen.dart';
 import 'database_detail_screen.dart';
+import 'file_storage_screen.dart';
 import 'project_detail_screen.dart';
 
 class DetailScreen extends StatelessWidget {
@@ -17,6 +18,7 @@ class DetailScreen extends StatelessWidget {
         key: ValueKey('project:${route.name}'),
         name: route.name,
       ),
+      'storage' => FileStorageScreen(key: ValueKey('storage:${route.name}'), name: route.name),
       'database' => DatabaseDetailScreen(
         key: ValueKey('database:${route.name}'),
         name: route.name,
