@@ -38,7 +38,11 @@ class _TemplatesScreenState extends State<TemplatesScreen>
     _load();
   }
 
+  bool _loading = false;
+
   Future<void> _load() async {
+    if (_loading) return;
+    _loading = true;
     try {
       final catalog = jsonMap(
         await AppScope.of(
@@ -54,6 +58,8 @@ class _TemplatesScreenState extends State<TemplatesScreen>
           error = exception.toString();
         });
       }
+    } finally {
+      _loading = false;
     }
   }
 
@@ -67,7 +73,7 @@ class _TemplatesScreenState extends State<TemplatesScreen>
   Widget build(BuildContext context) {
     final all = templates;
     if (all == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const BrandLoading();
     }
     final categories = {
       '全部',

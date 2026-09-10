@@ -99,9 +99,9 @@ class _ChatScreenState extends State<ChatScreen> with AutoRefresh<ChatScreen> {
           starterTemplates = templates;
           if (!silent) {
             shownStarterTemplateCount = min(
-            _starterTemplateBatchSize,
-            templates.length,
-          );
+              _starterTemplateBatchSize,
+              templates.length,
+            );
           }
           if (!_starterTemplateCategories(templates)
               .contains(starterTemplateCategory)) {
@@ -692,13 +692,7 @@ class _ChatScreenState extends State<ChatScreen> with AutoRefresh<ChatScreen> {
     if (templates == null) {
       return const SizedBox(
         height: 108,
-        child: Center(
-          child: SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 1.8),
-          ),
-        ),
+        child: Center(child: BrandLoading(compact: true)),
       );
     }
     if (templates.isEmpty) {
@@ -744,13 +738,7 @@ class _ChatScreenState extends State<ChatScreen> with AutoRefresh<ChatScreen> {
               SizedBox(
                 width: width,
                 height: 154,
-                child: const Center(
-                  child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 1.8),
-                  ),
-                ),
+                child: const Center(child: BrandLoading(compact: true)),
               ),
           ],
         );

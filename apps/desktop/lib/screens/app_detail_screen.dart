@@ -36,7 +36,11 @@ class _AppDetailScreenState extends State<AppDetailScreen>
     if (detail == null && error == null) _load();
   }
 
+  bool _loading = false;
+
   Future<void> _load() async {
+    if (_loading) return;
+    _loading = true;
     final controller = AppScope.of(context, listen: false);
     try {
       // The workload detail is the primary page data. Monitoring is
@@ -69,6 +73,8 @@ class _AppDetailScreenState extends State<AppDetailScreen>
       }
     } catch (exception) {
       if (mounted) setState(() => error = exception.toString());
+    } finally {
+      _loading = false;
     }
   }
 
@@ -159,7 +165,7 @@ class _AppDetailScreenState extends State<AppDetailScreen>
   Widget build(BuildContext context) {
     final data = detail;
     if (data == null && error == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const BrandLoading();
     }
     if (data == null) {
       return Padding(

@@ -55,26 +55,6 @@ class _LoginScreenState extends State<LoginScreen> {
       backgroundColor: colors.surface,
       body: Stack(
         children: [
-          Positioned(
-            left: 20,
-            top: 16,
-            child: SafeArea(
-              child: Row(
-                children: [
-                  Image.asset('assets/icon.png', width: 26, height: 26),
-                  const SizedBox(width: 9),
-                  Text(
-                    'Sealos',
-                    style: TextStyle(
-                      color: colors.ink,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
           Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(28, 72, 28, 28),
@@ -94,7 +74,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         padding: const EdgeInsets.all(6),
-                        child: Image.asset('assets/icon.png'),
+                        child: Image.asset('assets/sealos-logo-black.png'),
                       ),
                     ),
                     const SizedBox(height: 18),
@@ -202,7 +182,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ] else
-                              const Center(child: CircularProgressIndicator()),
+                              const BrandLoading(),
                             const SizedBox(height: 16),
                             Text(
                               event['type'] == 'exchanging'

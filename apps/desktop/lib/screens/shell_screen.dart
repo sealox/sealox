@@ -404,13 +404,7 @@ class _ExpandedSidebar extends StatelessWidget {
       return const [
         Padding(
           padding: EdgeInsets.symmetric(vertical: 12),
-          child: Center(
-            child: SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(strokeWidth: 1.5),
-            ),
-          ),
+          child: Center(child: BrandLoading(compact: true)),
         ),
       ];
     }

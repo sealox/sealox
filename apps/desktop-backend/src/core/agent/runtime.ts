@@ -1,3 +1,4 @@
+import { CodexModelSelector, CodexTurnRunner, type CodexModelChoice } from './codex-model-fallback'
 import { spawn, type ChildProcess, execFileSync } from 'child_process'
 import { randomBytes, randomUUID } from 'crypto'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
@@ -51,10 +52,7 @@ const EVE_HOST = '127.0.0.1'
 const DEFAULT_EVE_PORT = 24721
 const MIN_EVE_NODE_MAJOR = 24
 
-function codexModel(): string {
-  const configured = process.env.HELIOS_CODEX_MODEL?.trim()
-  return configured || 'gpt-5.6-sol'
-}
+const codexModelSelector = new CodexModelSelector()
 
 function configuredEvePort(): number {
   const raw = process.env.HELIOS_EVE_PORT
@@ -93,6 +91,7 @@ interface LiveSession {
   localCancelRequested: boolean
   localExecutorId: string | null
   localTurnId: string | null
+  codexRunner?: CodexTurnRunner
   codexThreadReady: boolean
   codexUnsubscribe: (() => void) | null
   codexMessages: Map<string, { index: number; phase: string | null; text: string }>
@@ -369,6 +368,7 @@ function resetTurnTrace(session: LiveSession): void {
 }
 
 function settleTurn(session: LiveSession, err?: Error): void {
+  session.codexRunner?.stop()
   const waiter = session.turnWaiter
   session.turnWaiter = null
   session.turnBusy = false
@@ -435,7 +435,8 @@ function bindCodexThread(session: LiveSession, threadId: string): void {
 async function ensureCodexThread(
   session: LiveSession,
   executor: { command: string },
-  workdir: string
+  workdir: string,
+  choice: CodexModelChoice
 ): Promise<string> {
   const stored = session.record.executorThreads?.codex
   if (stored && session.codexThreadReady) return stored
@@ -449,7 +450,7 @@ async function ensureCodexThread(
         {
           threadId: stored,
           cwd: workdir,
-          model: codexModel(),
+          model: choice.model,
           approvalPolicy: 'on-request',
           approvalsReviewer: 'user',
           sandbox: 'workspace-write',
@@ -469,7 +470,7 @@ async function ensureCodexThread(
       'thread/start',
       {
         cwd: workdir,
-        model: codexModel(),
+        model: choice.model,
         approvalPolicy: 'on-request',
         approvalsReviewer: 'user',
         sandbox: 'workspace-write',
@@ -493,6 +494,8 @@ async function runCodexExecutor(
   executor: { command: string },
   prompt: string
 ): Promise<void> {
+  const waiter = session.turnWaiter
+  session.codexRunner = undefined
   const workdir = localExecutorWorkdir()
   resetTurnTrace(session)
   session.codexMessages.clear()
@@ -510,7 +513,11 @@ async function runCodexExecutor(
     status: 'running'
   })
 
-  const threadId = await ensureCodexThread(session, executor, workdir)
+  const rpc = (method: string, params: Record<string, unknown>) =>
+    requestCodex<Record<string, any>>(executor.command, method, params, 60_000)
+  const choices = await codexModelSelector.choices(rpc, workdir, process.env.HELIOS_CODEX_MODEL)
+  if (session.localCancelRequested || session.turnWaiter !== waiter) return
+  const threadId = await ensureCodexThread(session, executor, workdir, choices[0])
   emitActivity(session, {
     id: 'codex-turn',
     label: 'Codex',
@@ -518,26 +525,26 @@ async function runCodexExecutor(
     status: 'running'
   })
   await persist(session)
-  const started = await requestCodex<Record<string, unknown>>(
-    executor.command,
-    'turn/start',
-    {
-      threadId,
-      cwd: workdir,
-      model: codexModel(),
-      input: [{ type: 'text', text: prompt, text_elements: [] }]
+  if (session.localCancelRequested || session.turnWaiter !== waiter) return
+  const runner = new CodexTurnRunner(rpc, codexModelSelector, choices, {
+    threadId, cwd: workdir,
+    input: [{ type: 'text', text: prompt, text_elements: [] }]
+  }, {
+    started: (id, model) => {
+      session.localTurnId = id
+      emitActivity(session, { id: 'codex-turn', label: 'Codex', detail: `正在执行任务（${model}）`, status: 'running' })
     },
-    60_000
-  )
-  const turnId = asString(asRecord(started.turn)?.id)
-  if (!turnId) throw new Error('Codex app-server 未返回 turn id')
-  session.localTurnId = turnId
-  emitActivity(session, {
-    id: 'codex-turn',
-    label: 'Codex',
-    detail: '正在执行任务',
-    status: 'running'
+    switched: model => {
+      session.localTurnId = null
+      session.codexMessages.clear()
+      session.codexThinking.clear()
+      emitActivity(session, { id: 'codex-model-switch', label: '自动切换模型', detail: `当前模型额度不足或不可用，改用 ${model} 继续执行`, status: 'running' })
+      persistInBackground(session)
+    },
+    failed: error => failTurn(session, error instanceof Error ? error.message : String(error))
   })
+  session.codexRunner = runner
+  await runner.start()
 }
 
 async function runTextExecutor(
@@ -1122,6 +1129,7 @@ function handleCodexMessage(session: LiveSession, message: CodexProtocolMessage)
   }
   const method = message.method
   const params = message.params ?? {}
+  if (session.codexRunner?.handle(method, params)) return
   const eventTurnId = asString(params.turnId) ?? asString(asRecord(params.turn)?.id)
   if (session.localTurnId && eventTurnId && eventTurnId !== session.localTurnId) return
 
@@ -1813,6 +1821,12 @@ export async function cancelChat(conversationId: string): Promise<void> {
   const session = live.get(conversationId)
   if (!session) throw new Error('没有进行中的回复')
   const codexThreadId = session.record.executorThreads?.codex
+  if (session.localExecutorId === 'codex' && session.turnBusy) {
+    session.localCancelRequested = true
+    await session.codexRunner?.cancel()
+    completeCancelledTurn(session)
+    return
+  }
   if (session.localExecutorId === 'codex' && codexThreadId && session.localTurnId) {
     session.localCancelRequested = true
     await requestCodex('codex', 'turn/interrupt', {

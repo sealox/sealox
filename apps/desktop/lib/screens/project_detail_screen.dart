@@ -36,7 +36,11 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
     if (detail == null && error == null) _load();
   }
 
+  bool _loading = false;
+
   Future<void> _load() async {
+    if (_loading) return;
+    _loading = true;
     try {
       final result = await AppScope.of(
         context,
@@ -50,6 +54,8 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       }
     } catch (exception) {
       if (mounted) setState(() => error = exception.toString());
+    } finally {
+      _loading = false;
     }
   }
 
@@ -292,7 +298,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
           ),
           Expanded(
             child: error == null
-                ? const Center(child: CircularProgressIndicator())
+                ? const BrandLoading()
                 : Padding(
                     padding: const EdgeInsets.all(24),
                     child: Align(

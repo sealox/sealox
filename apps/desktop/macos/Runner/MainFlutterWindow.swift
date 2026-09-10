@@ -4,11 +4,15 @@ import FlutterMacOS
 class MainFlutterWindow: NSWindow {
   private var nativeChannel: FlutterMethodChannel?
 
-  // Base standard: native traffic lights share the visual centerline of the
-  // Flutter sidebar collapse control (ShellScreen's macOS title-bar control).
-  // AppKit's title-bar coordinates grow upward; this offset places the native
-  // controls on the same visual centerline as the Flutter sidebar toggle.
-  private static let trafficLightSidebarAlignmentOffset: CGFloat = -8
+  // ShellScreen.macTitleBarControlTop (9) + half its 30-point toggle height.
+  private static let titleBarControlCenterFromTop: CGFloat = 24
+
+  override func update() {
+    super.update()
+    // AppKit can restore native button frames after resizing, activating or
+    // leaving full screen. Reapply an absolute position after its layout.
+    alignTrafficLights()
+  }
 
   override func awakeFromNib() {
     styleMask.insert(.fullSizeContentView)
@@ -47,18 +51,28 @@ class MainFlutterWindow: NSWindow {
   }
 
   private func alignTrafficLights() {
+    // Leave the system's full-screen toolbar and its animation to AppKit.
+    guard !styleMask.contains(.fullScreen), let contentView = contentView else { return }
+    let contentTop = contentView.isFlipped ? contentView.bounds.minY : contentView.bounds.maxY
+    let centerInContent = NSPoint(
+      x: 0,
+      y: contentTop + (contentView.isFlipped ? 1 : -1) * Self.titleBarControlCenterFromTop
+    )
+    let centerInWindow = contentView.convert(centerInContent, to: nil)
     for buttonType in [
       NSWindow.ButtonType.closeButton,
       .miniaturizeButton,
       .zoomButton
     ] {
-      guard let button = standardWindowButton(buttonType) else { continue }
-      button.setFrameOrigin(
-        NSPoint(
-          x: button.frame.origin.x,
-          y: button.frame.origin.y + Self.trafficLightSidebarAlignmentOffset
-        )
-      )
+      guard let button = standardWindowButton(buttonType), let parent = button.superview else {
+        continue
+      }
+      let center = parent.convert(centerInWindow, from: nil)
+      let targetY = center.y - button.frame.height / 2
+      // Idempotent: repeated window updates must never accumulate an offset.
+      if abs(button.frame.origin.y - targetY) > 0.01 {
+        button.setFrameOrigin(NSPoint(x: button.frame.origin.x, y: targetY))
+      }
     }
   }
 

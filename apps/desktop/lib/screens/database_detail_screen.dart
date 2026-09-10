@@ -37,7 +37,11 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen>
     if (detail == null && error == null) _load();
   }
 
+  bool _loading = false;
+
   Future<void> _load() async {
+    if (_loading) return;
+    _loading = true;
     final controller = AppScope.of(context, listen: false);
     try {
       // Database details are the primary page data. Monitoring and schema
@@ -77,6 +81,8 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen>
       if (mounted) setState(() {});
     } catch (exception) {
       if (mounted) setState(() => error = exception.toString());
+    } finally {
+      _loading = false;
     }
   }
 
@@ -182,7 +188,7 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen>
   Widget build(BuildContext context) {
     final data = detail;
     if (data == null && error == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const BrandLoading();
     }
     if (data == null) {
       return Padding(
@@ -499,10 +505,7 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen>
   Widget _schemaSection() {
     final data = schema;
     if (data == null) {
-      return const SizedBox(
-        height: 80,
-        child: Center(child: CircularProgressIndicator()),
-      );
+      return const SizedBox(height: 80, child: BrandLoading());
     }
     if (!boolValue(data['supported'])) {
       final reason = switch (stringValue(data['reason'])) {

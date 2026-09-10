@@ -53,8 +53,13 @@ class _AccountScreenState extends State<AccountScreen>
     }
   }
 
+  bool _loading = false;
+
   Future<void> _load() async {
+    if (_loading) return;
+    _loading = true;
     final controller = AppScope.of(context, listen: false);
+    final proxyRequest = _loadProxy();
     try {
       final values = await Future.wait([
         controller.invoke('getModelSettings'),
@@ -62,16 +67,9 @@ class _AccountScreenState extends State<AccountScreen>
         controller.invoke('getAppVersion'),
         controller.invoke('getAgentExecutors'),
       ]);
-      JsonMap? proxy;
-      try {
-        proxy = jsonMap(await controller.invoke('getAiProxyOverview'));
-      } catch (_) {
-        // The rest of settings stays usable when AI Proxy is unavailable.
-      }
       if (mounted) {
         setState(() {
           model = jsonMap(values[0]);
-          proxyOverview = proxy;
           update = jsonMap(values[1]);
           version = stringValue(values[2]);
           executors = jsonList(values[3]);
@@ -79,6 +77,22 @@ class _AccountScreenState extends State<AccountScreen>
       }
     } catch (exception) {
       if (mounted) setState(() => error = exception.toString());
+    } finally {
+      await proxyRequest;
+      _loading = false;
+    }
+  }
+
+  Future<void> _loadProxy() async {
+    try {
+      final result = await AppScope.of(
+        context,
+        listen: false,
+      ).invoke('getAiProxyOverview');
+      if (mounted) setState(() => proxyOverview = jsonMap(result));
+    } catch (_) {
+      // Keep the rest of account settings available independently.
+      if (mounted && proxyOverview == null) setState(() => proxyOverview = {});
     }
   }
 
@@ -223,9 +237,7 @@ class _AccountScreenState extends State<AccountScreen>
               if (executors == null)
                 const Padding(
                   padding: EdgeInsets.all(16),
-                  child: Center(
-                    child: CircularProgressIndicator(strokeWidth: 1.8),
-                  ),
+                  child: Center(child: BrandLoading(compact: true)),
                 ),
             ],
           ),
@@ -256,11 +268,7 @@ class _AccountScreenState extends State<AccountScreen>
                 ),
                 if (proxyOverview == null) ...[
                   const SizedBox(height: 14),
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 1.8),
-                  ),
+                  const BrandLoading(compact: true),
                 ] else if (activeKeys.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   for (final key in activeKeys)

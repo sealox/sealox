@@ -37,10 +37,7 @@ class MonitorCharts extends StatelessWidget {
   Widget build(BuildContext context) {
     final data = monitor;
     if (data == null) {
-      return const SizedBox(
-        height: 150,
-        child: Center(child: CircularProgressIndicator()),
-      );
+      return const SizedBox(height: 150, child: BrandLoading());
     }
     if (!boolValue(data['available'])) {
       return SizedBox(
@@ -375,10 +372,7 @@ class _PodLogsPanelState extends State<PodLogsPanel> {
               ],
             ),
             if (busy)
-              const Padding(
-                padding: EdgeInsets.all(20),
-                child: CircularProgressIndicator(),
-              ),
+              const Padding(padding: EdgeInsets.all(20), child: BrandLoading()),
             if (logs != null)
               Container(
                 width: double.infinity,

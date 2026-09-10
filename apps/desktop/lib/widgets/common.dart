@@ -22,23 +22,27 @@ class AppScope extends InheritedNotifier<AppController> {
 }
 
 class BrandLoading extends StatelessWidget {
-  const BrandLoading({super.key});
+  const BrandLoading({this.compact = false, super.key});
+
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Image.asset('assets/sealos-logo-black.png', width: 44, height: 44),
-            const SizedBox(height: 16),
-            const SizedBox(
-              width: 120,
-              child: LinearProgressIndicator(minHeight: 2),
-            ),
-          ],
-        ),
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Image.asset(
+            'assets/sealos-logo-black.png',
+            width: compact ? 24 : 44,
+            height: compact ? 24 : 44,
+          ),
+          SizedBox(height: compact ? 8 : 16),
+          SizedBox(
+            width: compact ? 64 : 120,
+            child: const LinearProgressIndicator(minHeight: 2),
+          ),
+        ],
       ),
     );
   }

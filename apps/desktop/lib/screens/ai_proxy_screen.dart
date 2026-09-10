@@ -35,7 +35,11 @@ class _AiProxyScreenState extends State<AiProxyScreen>
     }
   }
 
+  bool _loading = false;
+
   Future<void> _load() async {
+    if (_loading) return;
+    _loading = true;
     try {
       final result = await AppScope.of(
         context,
@@ -44,6 +48,8 @@ class _AiProxyScreenState extends State<AiProxyScreen>
       if (mounted) setState(() => overview = jsonMap(result));
     } catch (exception) {
       if (mounted) setState(() => error = exception.toString());
+    } finally {
+      _loading = false;
     }
   }
 
@@ -137,7 +143,7 @@ class _AiProxyScreenState extends State<AiProxyScreen>
   Widget build(BuildContext context) {
     final data = overview;
     if (data == null && error == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const BrandLoading();
     }
     if (data == null) {
       return Padding(

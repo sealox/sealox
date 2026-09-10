@@ -178,23 +178,45 @@ class _WorkspaceDialogState extends State<WorkspaceDialog> {
         height: 560,
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 10, 14),
-              child: Row(
-                children: [
-                  Text('工作空间', style: Theme.of(context).textTheme.titleLarge),
-                  const Spacer(),
-                  IconButton(
-                    tooltip: '新建',
-                    onPressed: busy ? null : _create,
-                    icon: const Icon(Icons.add),
-                  ),
-                  IconButton(
-                    tooltip: '关闭',
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
+            SizedBox(
+              height: 48,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '工作空间',
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: '新建工作空间',
+                      style: IconButton.styleFrom(
+                        fixedSize: const Size(32, 32),
+                        minimumSize: const Size(32, 32),
+                        padding: EdgeInsets.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        foregroundColor: context.helios.muted,
+                      ),
+                      onPressed: busy ? null : _create,
+                      icon: const Icon(Icons.add, size: 18),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip: '关闭',
+                      style: IconButton.styleFrom(
+                        fixedSize: const Size(32, 32),
+                        minimumSize: const Size(32, 32),
+                        padding: EdgeInsets.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        foregroundColor: context.helios.muted,
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close, size: 18),
+                    ),
+                  ],
+                ),
               ),
             ),
             const Divider(height: 1),
@@ -208,7 +230,7 @@ class _WorkspaceDialogState extends State<WorkspaceDialog> {
               ),
             Expanded(
               child: items == null
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const BrandLoading()
                   : Row(
                       children: [
                         SizedBox(
@@ -264,7 +286,7 @@ class _WorkspaceDialogState extends State<WorkspaceDialog> {
 
   Widget _detailsPane() {
     final data = details;
-    if (data == null) return const Center(child: CircularProgressIndicator());
+    if (data == null) return const BrandLoading();
     final members = jsonList(data['members']);
     final isCurrentWorkspace =
         items?.any(
@@ -274,100 +296,116 @@ class _WorkspaceDialogState extends State<WorkspaceDialog> {
     final quota = isCurrentWorkspace
         ? widget.quota.where((item) => !_isCudaQuota(item)).toList()
         : const <JsonMap>[];
-    return ListView(
-      padding: const EdgeInsets.all(22),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                stringValue(data['teamName'], selectedUid ?? ''),
-                style: Theme.of(context).textTheme.headlineMedium,
-              ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(22, 16, 22, 0),
+          child: FilledButton(
+            onPressed: busy || selectedUid == null
+                ? null
+                : () async {
+                    final switched = await _run<bool>(() async {
+                      await widget.controller.changeWorkspace(selectedUid!);
+                      return true;
+                    });
+                    if (switched == true && mounted) Navigator.pop(context);
+                  },
+            child: Text(
+              items?.any(
+                        (item) =>
+                            item['uid'] == selectedUid &&
+                            boolValue(item['current']),
+                      ) ??
+                      false
+                  ? '当前工作空间'
+                  : '切换到此工作空间',
             ),
-            if (boolValue(data['canRename']))
-              IconButton(
-                tooltip: '重命名',
-                onPressed: busy ? null : _rename,
-                icon: const Icon(Icons.edit_outlined, size: 19),
-              ),
-          ],
+          ),
         ),
-        const SizedBox(height: 5),
-        Text(
-          stringValue(data['myRoleLabel']),
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: 18),
-        if (boolValue(data['canInvite']))
-          Wrap(
-            spacing: 8,
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(22),
             children: [
-              OutlinedButton.icon(
-                onPressed: busy ? null : () => _invite('developer'),
-                icon: const Icon(Icons.person_add_alt, size: 17),
-                label: const Text('邀请开发者'),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      stringValue(data['teamName'], selectedUid ?? ''),
+                      style: Theme.of(context).textTheme.headlineMedium,
+                    ),
+                  ),
+                  if (boolValue(data['canRename']))
+                    IconButton(
+                      tooltip: '重命名',
+                      onPressed: busy ? null : _rename,
+                      icon: const Icon(Icons.edit_outlined, size: 19),
+                    ),
+                ],
               ),
-              OutlinedButton.icon(
-                onPressed: busy ? null : () => _invite('manager'),
-                icon: const Icon(Icons.manage_accounts_outlined, size: 17),
-                label: const Text('邀请管理员'),
+              const SizedBox(height: 5),
+              Text(
+                stringValue(data['myRoleLabel']),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 18),
+              if (boolValue(data['canInvite']))
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: busy ? null : () => _invite('developer'),
+                      icon: const Icon(Icons.person_add_alt, size: 17),
+                      label: const Text('邀请开发者'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: busy ? null : () => _invite('manager'),
+                      icon: const Icon(
+                        Icons.manage_accounts_outlined,
+                        size: 17,
+                      ),
+                      label: const Text('邀请管理员'),
+                    ),
+                  ],
+                ),
+              if (isCurrentWorkspace) ...[
+                const SizedBox(height: 24),
+                const SectionTitle('资源配额'),
+                if (quota.isEmpty)
+                  Text(
+                    '暂未获取到配额信息',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  )
+                else
+                  for (final item in quota) _QuotaRow(item: item),
+              ],
+              const SizedBox(height: 24),
+              const SectionTitle('成员'),
+              for (final member in members)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    child: Text(
+                      stringValue(
+                        member['nickname'],
+                        '?',
+                      ).characters.first.toUpperCase(),
+                    ),
+                  ),
+                  title: Text(stringValue(member['nickname'])),
+                  subtitle: Text(stringValue(member['roleLabel'])),
+                ),
+              const SizedBox(height: 24),
+              const SizedBox(height: 10),
+              TextButton.icon(
+                onPressed: () => widget.controller.invoke('openExternal', [
+                  'https://${stringValue(widget.controller.status?['regionDomain'], 'os.sealos.io')}/?openapp=system-costcenter',
+                ]),
+                icon: const Icon(Icons.bolt_outlined, size: 17),
+                label: const Text('打开 Sealos 费用中心'),
               ),
             ],
           ),
-        if (isCurrentWorkspace) ...[
-          const SizedBox(height: 24),
-          const SectionTitle('资源配额'),
-          if (quota.isEmpty)
-            Text('暂未获取到配额信息', style: Theme.of(context).textTheme.bodySmall)
-          else
-            for (final item in quota) _QuotaRow(item: item),
-        ],
-        const SizedBox(height: 24),
-        const SectionTitle('成员'),
-        for (final member in members)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: CircleAvatar(
-              child: Text(
-                stringValue(
-                  member['nickname'],
-                  '?',
-                ).characters.first.toUpperCase(),
-              ),
-            ),
-            title: Text(stringValue(member['nickname'])),
-            subtitle: Text(stringValue(member['roleLabel'])),
-          ),
-        const SizedBox(height: 24),
-        FilledButton(
-          onPressed: busy || selectedUid == null
-              ? null
-              : () async {
-                  final switched = await _run<bool>(() async {
-                    await widget.controller.changeWorkspace(selectedUid!);
-                    return true;
-                  });
-                  if (switched == true && mounted) Navigator.pop(context);
-                },
-          child: Text(
-            items?.any(
-                      (item) =>
-                          item['uid'] == selectedUid &&
-                          boolValue(item['current']),
-                    ) ??
-                    false
-                ? '当前工作空间'
-                : '切换到此工作空间',
-          ),
-        ),
-        const SizedBox(height: 10),
-        TextButton.icon(
-          onPressed: () => widget.controller.invoke('openExternal', [
-            'https://${stringValue(widget.controller.status?['regionDomain'], 'os.sealos.io')}/?openapp=system-costcenter',
-          ]),
-          icon: const Icon(Icons.bolt_outlined, size: 17),
-          label: const Text('打开 Sealos 费用中心'),
         ),
       ],
     );
