@@ -31,7 +31,7 @@ class ShellScreen extends StatefulWidget {
   static const resourceTabs = <(DesktopTab, String)>[
     (DesktopTab.apps, '应用'),
     (DesktopTab.databases, '数据库'),
-    (DesktopTab.storage, '存储'),
+    (DesktopTab.storage, '文件存储'),
   ];
 
   @override

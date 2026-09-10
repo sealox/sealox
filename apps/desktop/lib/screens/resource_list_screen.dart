@@ -143,7 +143,9 @@ class _ResourceListScreenState extends State<ResourceListScreen> {
         ResourceType.databases => () => controller.openDetail(
           DetailRoute('database', name),
         ),
-        ResourceType.storage => () => controller.openDetail(DetailRoute('storage', name)),
+        ResourceType.storage => () => controller.openDetail(
+          DetailRoute('storage', name),
+        ),
       },
       trailing: canSelect || menu != null
           ? Row(
@@ -442,7 +444,7 @@ class _ResourceListScreenState extends State<ResourceListScreen> {
     final buckets = jsonList(snapshot['buckets'])
         .where((item) => item['project'] == name)
         .length;
-    return '$apps 应用  $databases 数据库  $buckets 存储';
+    return '$apps 应用  $databases 数据库  $buckets 文件存储';
   }
 
   IconData get _icon => switch (widget.type) {
@@ -456,6 +458,6 @@ class _ResourceListScreenState extends State<ResourceListScreen> {
     ResourceType.projects => '项目',
     ResourceType.apps => '应用',
     ResourceType.databases => '数据库',
-    ResourceType.storage => '存储',
+    ResourceType.storage => '文件存储',
   };
 }
