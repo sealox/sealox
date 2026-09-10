@@ -1,3 +1,20 @@
+# Sealos 0.8.2
+
+## Highlights
+
+- Unified Codex App Server and local Codex model selection, defaulting to `gpt-5.6-sol` for the current account configuration.
+- Added automatic Eve model fallback when an enabled model is exhausted or rate limited.
+- Corrected macOS traffic-light alignment with the sidebar toggle and verified the built desktop app visually.
+
+## Validation
+
+- Flutter Analyze passes.
+- Desktop backend typecheck and build pass.
+- Eve typecheck and all 7 tests pass.
+- macOS Debug build and runtime screenshot verification pass.
+
+---
+
 # Sealos 0.8.1
 
 ## Highlights
