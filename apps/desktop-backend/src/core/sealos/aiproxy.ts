@@ -254,6 +254,15 @@ function pickHeliosModel(models: AiModelInfo[]): string {
   return gemini?.model ?? HELIOS_FALLBACK_MODEL
 }
 
+/** 返回当前目录中可用于自动切换的聊天模型，保持目录顺序并排除首选模型。 */
+export async function getHeliosFallbackModels(primary: string): Promise<string[]> {
+  const overview = await fetchAiProxyOverview()
+  return overview.models
+    .filter(isChatModel)
+    .map((item) => item.model)
+    .filter((model, index, all) => model !== primary && all.indexOf(model) === index)
+}
+
 /**
  * 当前工作空间里必须有一把名为 helios 的启用 Key。
  * 没有就创建，停用就重新打开。密钥只给主进程，不进渲染进程。

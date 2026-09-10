@@ -17,7 +17,7 @@ import type {
 import { readDeepseekCredential } from '../model-settings'
 import { getEnabledAgentExecutor } from '../agent-executors'
 import { getStatus } from '../sealos/auth'
-import { ensureHeliosKey } from '../sealos/aiproxy'
+import { ensureHeliosKey, getHeliosFallbackModels } from '../sealos/aiproxy'
 import { fetchResources } from '../sealos/resources'
 import {
   currentWorkspaceId,
@@ -2087,6 +2087,12 @@ export async function startAgent(): Promise<void> {
     const cred = (await readDeepseekCredential()) ?? (await ensureHeliosKey())
     if (epoch !== startEpoch) return
     setStatus({ state: 'starting', detail: `正在启动 AI 服务（${cred.model}）…` })
+    let fallbackModels: string[] = []
+    try {
+      fallbackModels = await getHeliosFallbackModels(cred.model)
+    } catch {
+      // 模型目录短暂不可用时仍然启动首选模型，后续请求可重试。
+    }
 
     const root = eveAppRoot()
     const { args, extraEnv } = eveSpawnArgs(root)
@@ -2101,6 +2107,7 @@ export async function startAgent(): Promise<void> {
         HELIOS_AI_BASE_URL: cred.endpoint,
         HELIOS_AI_KEY: cred.apiKey,
         HELIOS_AI_MODEL: cred.model,
+        HELIOS_AI_FALLBACK_MODELS: JSON.stringify(fallbackModels),
         ...extraEnv
       },
       stdio: ['ignore', 'pipe', 'pipe']

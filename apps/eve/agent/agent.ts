@@ -1,6 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { defineAgent } from "eve";
 import { installConsoleRedaction } from "./lib/security";
+import { readFallbackModels, withModelFallback } from "./lib/model-fallback";
 
 installConsoleRedaction();
 
@@ -18,7 +19,11 @@ const sealos = createOpenAICompatible({
   apiKey
 });
 
+const primary = sealos.chatModel(modelId);
+const fallbackModels = readFallbackModels(process.env["HELIOS_AI_FALLBACK_MODELS"], modelId)
+  .map((id) => sealos.chatModel(id));
+
 export default defineAgent({
-  model: sealos.chatModel(modelId),
+  model: withModelFallback(primary, fallbackModels),
   modelContextWindowTokens: 1_048_576
 });
