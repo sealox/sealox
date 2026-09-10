@@ -34,3 +34,22 @@ export async function listStorageObjects(bucket: string, prefix = ''): Promise<u
     stream.on('error', reject); stream.on('end', () => resolve(rows))
   })
 }
+
+export async function uploadStorageObject(bucket: string, name: string, contentBase64: string): Promise<void> {
+  const {client, bucket: actual} = await clientFor(bucket)
+  const body = Buffer.from(contentBase64, 'base64')
+  await client.putObject(actual, name.replace(/^\/+/, ''), body)
+}
+export async function deleteStorageObject(bucket: string, name: string): Promise<void> {
+  const {client, bucket: actual} = await clientFor(bucket)
+  await client.removeObject(actual, name)
+}
+export async function createStorageFolder(bucket: string, name: string): Promise<void> {
+  const {client, bucket: actual} = await clientFor(bucket)
+  const key = name.replace(/^\/+|(?<!\/)$/g, '') + '/'
+  await client.putObject(actual, key, Buffer.alloc(0))
+}
+export async function getStorageDownloadUrl(bucket: string, name: string): Promise<string> {
+  const {client, bucket: actual} = await clientFor(bucket)
+  return client.presignedGetObject(actual, name, 900)
+}

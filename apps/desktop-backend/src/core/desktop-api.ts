@@ -61,7 +61,7 @@ import { clearDeepseekKey, getModelSettings, saveDeepseekKey } from './model-set
 import { getAgentExecutors, setAgentExecutor } from './agent-executors'
 import { downloadUpdate, getUpdateStatus, startUpdateChecker, stopUpdateChecker } from './update'
 import { desktopHost } from './desktop-host'
-import { listStorageObjects } from './sealos/storage'
+import { listStorageObjects, uploadStorageObject, deleteStorageObject, createStorageFolder, getStorageDownloadUrl } from './sealos/storage'
 
 export const DESKTOP_METHODS = [
   'getAppVersion',
@@ -127,7 +127,11 @@ export const DESKTOP_METHODS = [
   'renameChat',
   'archiveChat',
   'deleteChat',
-  'listStorageObjects'
+  'listStorageObjects',
+  'uploadStorageObject',
+  'deleteStorageObject',
+  'createStorageFolder',
+  'getStorageDownloadUrl'
 ] as const
 
 export type DesktopMethod = (typeof DESKTOP_METHODS)[number]
@@ -304,6 +308,14 @@ export async function invokeDesktopMethod(
       return deleteChat(String(args[0]))
     case 'listStorageObjects':
       return listStorageObjects(String(args[0]), String(args[1] ?? ''))
+    case 'uploadStorageObject':
+      return uploadStorageObject(String(args[0]), String(args[1]), String(args[2] ?? ''))
+    case 'deleteStorageObject':
+      return deleteStorageObject(String(args[0]), String(args[1]))
+    case 'createStorageFolder':
+      return createStorageFolder(String(args[0]), String(args[1]))
+    case 'getStorageDownloadUrl':
+      return getStorageDownloadUrl(String(args[0]), String(args[1]))
   }
 }
 
