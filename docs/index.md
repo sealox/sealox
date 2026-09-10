@@ -11,7 +11,7 @@
 | 宿主     | 路径                                    | 当前                                                     |
 | -------- | --------------------------------------- | -------------------------------------------------------- |
 | 桌面     | `apps/desktop` + `apps/desktop-backend` | Flutter macOS / Windows 宿主，共享原 Sealos / Agent 实现 |
-| Electron | `apps/electron`                         | 过渡期宿主与共享业务核心                                 |
+| Flutter desktop | `apps/desktop`                     | macOS / Windows 桌面界面与宿主                         |
 | iOS      | `apps/mobile`（Expo）                   | 只有宿主，功能未移植                                     |
 
 不做 Android，不做 Expo Web。iOS 细节见 [mobile.md](mobile.md)。

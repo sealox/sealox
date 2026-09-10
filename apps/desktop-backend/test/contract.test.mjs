@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 
 const execFileAsync = promisify(execFile)
-const sharedUrl = new URL('../../electron/src/shared/types.ts', import.meta.url)
-const apiUrl = new URL('../../electron/src/main/desktop-api.ts', import.meta.url)
+const sharedUrl = new URL('../src/shared/types.ts', import.meta.url)
+const apiUrl = new URL('../src/core/desktop-api.ts', import.meta.url)
 const backendUrl = new URL('../dist/helios-backend.cjs', import.meta.url)
 
 async function contractMethods() {
@@ -32,8 +32,8 @@ test('sidecar exposes every HeliosApi method exactly once', async () => {
 test('stream subscriptions are represented by sidecar event channels', async () => {
   const sources = await Promise.all([
     readFile(apiUrl, 'utf8'),
-    readFile(new URL('../../electron/src/main/agent/runtime.ts', import.meta.url), 'utf8'),
-    readFile(new URL('../../electron/src/main/update.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../src/core/agent/runtime.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../src/core/update.ts', import.meta.url), 'utf8'),
     readFile(new URL('../src/index.ts', import.meta.url), 'utf8')
   ])
   const api = sources.join('\n')

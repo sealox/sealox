@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { withSystemProxy } from '../../electron/src/main/agent/codex-environment.ts'
+import { withSystemProxy } from '../src/core/agent/codex-environment.ts'
 
 const settings = `
   HTTPEnable : 1

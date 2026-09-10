@@ -13,7 +13,7 @@ Flutter 负责 macOS / Windows 桌面宿主，Node sidecar 复用原有 Sealos �
 apps/
 ├── desktop/          # Flutter macOS / Windows 客户端（主桌面端）
 ├── desktop-backend/  # 标准输入输出 RPC sidecar，打包共享业务核心
-├── electron/         # 原 Electron 宿主，过渡期与 Flutter 共享同一业务层
+├── desktop-backend/  # Node sidecar，共享业务核心
 ├── eve/              # 本地 Agent 服务（Vercel Eve）
 └── mobile/           # 原 Expo iOS 空宿主，不在当前桌面重构范围
 ```
@@ -24,7 +24,6 @@ apps/
 npm install          # 根目录安装全部 workspace 依赖
 npm run build:backend # 编译 Flutter 需要的 sidecar
 npm run dev          # 按当前宿主启动 Flutter macOS / Windows 桌面端
-npm run dev:electron # 启动过渡期 Electron 桌面端
 npm run dev:eve      # 启动本地 eve agent
 npm run typecheck    # TypeScript 工作区类型检查
 npm run typecheck:flutter # Flutter 静态分析

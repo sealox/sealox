@@ -4,8 +4,8 @@
 
 ## 业务边界
 
-- Sealos 认证、Kubernetes 资源、项目、应用、数据库、存储、模板、AI Proxy 和工作空间继续使用 `apps/electron/src/main/sealos` 中的同一份 TypeScript 实现。
-- Agent、对话存储、附件读取和 Eve 运行时继续使用 `apps/electron/src/main/agent` 和 `apps/eve`。
+- Sealos 认证、Kubernetes 资源、项目、应用、数据库、存储、模板、AI Proxy 和工作空间继续使用 `apps/desktop-backend/src/core/sealos` 中的同一份 TypeScript 实现。
+- Agent、对话存储、附件读取和 Eve 运行时继续使用 `apps/desktop-backend/src/core/agent` 和 `apps/eve`。
 - `desktop-api.ts` 是 Electron IPC 与 Flutter RPC 共用的唯一方法调度层。增删 `HeliosApi` 时，`apps/desktop-backend/test/contract.test.mjs` 会阻止任一宿主漏接。
 
 sidecar 与 Flutter 通过标准输入输出的 NDJSON 通信，不开本地端口。每个请求是 `{id, method, args}`，响应是 `{id, result}` 或 `{id, error}`，事件是 `{event, data}`。

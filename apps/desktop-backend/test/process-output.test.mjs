@@ -5,7 +5,7 @@ import {
   formatStartFailure,
   ProcessOutputTail,
   safeEveWorkflowEnvironment
-} from '../../electron/src/main/agent/process-output.ts'
+} from '../src/core/agent/process-output.ts'
 
 test('eve exit detail contains a bounded stderr tail', () => {
   const tail = new ProcessOutputTail(2, 40)

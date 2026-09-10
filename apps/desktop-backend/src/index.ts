@@ -9,8 +9,8 @@ import {
   startDesktopServices,
   stopDesktopServices,
   type DesktopMethod
-} from '../../electron/src/main/desktop-api'
-import { configureDesktopHost } from '../../electron/src/main/desktop-host'
+} from './core/desktop-api'
+import { configureDesktopHost } from './core/desktop-host'
 
 interface RpcRequest {
   id: number

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { inferProjectLinks } from '../../electron/src/main/sealos/topology.ts'
+import { inferProjectLinks } from '../src/core/sealos/topology.ts'
 
 function workload(name, values = []) {
   return {
