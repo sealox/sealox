@@ -605,6 +605,7 @@ class _ResourceNavGroupState extends State<_ResourceNavGroup> {
             decoration: BoxDecoration(
               border: Border(left: BorderSide(color: colors.line)),
             ),
+            clipBehavior: Clip.hardEdge,
             child: Column(
               children: [
                 for (final item in ShellScreen.resourceTabs)
@@ -636,7 +637,7 @@ class _ResourceNavItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.helios;
     return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 1),
+      padding: const EdgeInsets.only(left: 4, right: 4, bottom: 1),
       child: Material(
         color: selected ? colors.selected : Colors.transparent,
         borderRadius: BorderRadius.circular(6),
