@@ -53,3 +53,11 @@ export async function getStorageDownloadUrl(bucket: string, name: string): Promi
   const {client, bucket: actual} = await clientFor(bucket)
   return client.presignedGetObject(actual, name, 900)
 }
+
+export async function getStorageInfo(bucket: string): Promise<Record<string, unknown>> {
+  const { kc, namespace } = clientContext()
+  const list = await kc.makeApiClient(k8s.CustomObjectsApi).listNamespacedCustomObject({group:'objectstorage.sealos.io',version:'v1',namespace,plural:'objectstoragebuckets'}) as any
+  const item = (list.items ?? []).find((x: any) => x.metadata?.name === bucket || x.status?.name === bucket)
+  if (!item) throw new Error(`未找到文件存储：${bucket}`)
+  return { name:item.metadata?.name ?? bucket, bucketName:item.status?.name ?? bucket, policy:item.spec?.policy ?? 'private', createdAt:item.metadata?.creationTimestamp, namespace }
+}

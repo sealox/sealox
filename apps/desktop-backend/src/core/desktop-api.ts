@@ -131,7 +131,8 @@ export const DESKTOP_METHODS = [
   'uploadStorageObject',
   'deleteStorageObject',
   'createStorageFolder',
-  'getStorageDownloadUrl'
+  'getStorageDownloadUrl',
+  'getStorageInfo'
 ] as const
 
 export type DesktopMethod = (typeof DESKTOP_METHODS)[number]
@@ -316,6 +317,8 @@ export async function invokeDesktopMethod(
       return createStorageFolder(String(args[0]), String(args[1]))
     case 'getStorageDownloadUrl':
       return getStorageDownloadUrl(String(args[0]), String(args[1]))
+    case 'getStorageInfo':
+      return getStorageInfo(String(args[0]))
   }
 }
 
