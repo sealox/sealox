@@ -649,6 +649,18 @@ export interface AgentExecutorInfo {
 }
 
 export interface HeliosApi {
+  setStoragePolicy(bucket: string, policy: 'private' | 'publicRead'): Promise<void>
+  getWorkspaceStorageCredentials(): Promise<{url: string; accessKey: string; secretKey: string}>
+  getStorageCredentials(bucket: string): Promise<{bucket: string; url: string; accessKey: string; secretKey: string}>
+  createChat(title?: string, projectName?: string): Promise<unknown>
+  getStorageInfo(bucket: string): Promise<Record<string, unknown>>
+  listStorageObjects(bucket: string, prefix?: string): Promise<unknown[]>
+  uploadStorageObject(bucket: string, name: string, contentBase64: string): Promise<void>
+  uploadStorageFile(bucket: string, name: string, path: string): Promise<void>
+  downloadStorageFile(bucket: string, name: string, path: string): Promise<void>
+  deleteStorageObject(bucket: string, name: string): Promise<void>
+  createStorageFolder(bucket: string, name: string): Promise<void>
+  getStorageDownloadUrl(bucket: string, name: string): Promise<string>
   getAppVersion(): Promise<string>
   getUpdateStatus(): Promise<AppUpdateStatus>
   downloadUpdate(): Promise<void>

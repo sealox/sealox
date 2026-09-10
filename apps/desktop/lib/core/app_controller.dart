@@ -234,7 +234,7 @@ class AppController extends ChangeNotifier {
   void _startRefreshTimer() {
     _refreshTimer?.cancel();
     _refreshTimer = Timer.periodic(
-      const Duration(seconds: 15),
+      const Duration(seconds: 5),
       (_) => unawaited(refreshResources(silent: true)),
     );
   }
@@ -246,6 +246,7 @@ class AppController extends ChangeNotifier {
       final list = switch (route.type) {
         'project' => jsonList(data['projects']),
         'database' => jsonList(data['databases']),
+        'storage' => jsonList(data['buckets']),
         _ => jsonList(data['apps']),
       };
       return !list.any((item) => item['name'] == route.name);

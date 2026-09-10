@@ -1,3 +1,5 @@
+import '../core/auto_refresh.dart';
+
 import 'package:flutter/material.dart';
 
 import '../core/app_controller.dart';
@@ -15,7 +17,13 @@ class DatabaseDetailScreen extends StatefulWidget {
   State<DatabaseDetailScreen> createState() => _DatabaseDetailScreenState();
 }
 
-class _DatabaseDetailScreenState extends State<DatabaseDetailScreen> {
+class _DatabaseDetailScreenState extends State<DatabaseDetailScreen>
+    with AutoRefresh<DatabaseDetailScreen> {
+  @override
+  bool get canAutoRefresh => !busy;
+  @override
+  Future<void> refreshAutomatically() => _load();
+
   JsonMap? detail;
   JsonMap? monitor;
   JsonMap? schema;

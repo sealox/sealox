@@ -61,7 +61,7 @@ import { clearDeepseekKey, getModelSettings, saveDeepseekKey } from './model-set
 import { getAgentExecutors, setAgentExecutor } from './agent-executors'
 import { downloadUpdate, getUpdateStatus, startUpdateChecker, stopUpdateChecker } from './update'
 import { desktopHost } from './desktop-host'
-import { listStorageObjects, uploadStorageObject, deleteStorageObject, createStorageFolder, getStorageDownloadUrl, getStorageInfo } from './sealos/storage'
+import { setStoragePolicy, getWorkspaceStorageCredentials, getStorageCredentials, uploadStorageFile, downloadStorageFile, listStorageObjects, uploadStorageObject, deleteStorageObject, createStorageFolder, getStorageDownloadUrl, getStorageInfo } from './sealos/storage'
 
 export const DESKTOP_METHODS = [
   'getAppVersion',
@@ -127,6 +127,11 @@ export const DESKTOP_METHODS = [
   'renameChat',
   'archiveChat',
   'deleteChat',
+  'setStoragePolicy',
+  'getWorkspaceStorageCredentials',
+  'getStorageCredentials',
+  'uploadStorageFile',
+  'downloadStorageFile',
   'listStorageObjects',
   'uploadStorageObject',
   'deleteStorageObject',
@@ -307,6 +312,16 @@ export async function invokeDesktopMethod(
       return archiveChat(String(args[0]))
     case 'deleteChat':
       return deleteChat(String(args[0]))
+    case 'setStoragePolicy':
+      return setStoragePolicy(String(args[0]), String(args[1]))
+    case 'getWorkspaceStorageCredentials':
+      return getWorkspaceStorageCredentials()
+    case 'getStorageCredentials':
+      return getStorageCredentials(String(args[0]))
+    case 'uploadStorageFile':
+      return uploadStorageFile(String(args[0]), String(args[1]), String(args[2]))
+    case 'downloadStorageFile':
+      return downloadStorageFile(String(args[0]), String(args[1]), String(args[2]))
     case 'listStorageObjects':
       return listStorageObjects(String(args[0]), String(args[1] ?? ''))
     case 'uploadStorageObject':

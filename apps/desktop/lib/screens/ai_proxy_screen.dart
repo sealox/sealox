@@ -1,3 +1,5 @@
+import '../core/auto_refresh.dart';
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
@@ -12,7 +14,13 @@ class AiProxyScreen extends StatefulWidget {
   State<AiProxyScreen> createState() => _AiProxyScreenState();
 }
 
-class _AiProxyScreenState extends State<AiProxyScreen> {
+class _AiProxyScreenState extends State<AiProxyScreen>
+    with AutoRefresh<AiProxyScreen> {
+  @override
+  bool get canAutoRefresh => !busy;
+  @override
+  Future<void> refreshAutomatically() => _load();
+
   JsonMap? overview;
   String? error;
   bool busy = false;
@@ -152,14 +160,7 @@ class _AiProxyScreenState extends State<AiProxyScreen> {
           ),
           const SizedBox(height: 14),
         ],
-        SectionTitle(
-          '接入',
-          trailing: IconButton(
-            tooltip: '刷新',
-            onPressed: busy ? null : _load,
-            icon: const Icon(Icons.refresh, size: 20),
-          ),
-        ),
+        SectionTitle('接入', trailing: const SizedBox.shrink()),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(18),

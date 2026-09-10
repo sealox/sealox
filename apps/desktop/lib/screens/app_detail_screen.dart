@@ -1,3 +1,5 @@
+import '../core/auto_refresh.dart';
+
 import 'package:flutter/material.dart';
 
 import '../core/app_controller.dart';
@@ -16,7 +18,13 @@ class AppDetailScreen extends StatefulWidget {
   State<AppDetailScreen> createState() => _AppDetailScreenState();
 }
 
-class _AppDetailScreenState extends State<AppDetailScreen> {
+class _AppDetailScreenState extends State<AppDetailScreen>
+    with AutoRefresh<AppDetailScreen> {
+  @override
+  bool get canAutoRefresh => !busy;
+  @override
+  Future<void> refreshAutomatically() => _load();
+
   JsonMap? detail;
   JsonMap? monitor;
   String? error;

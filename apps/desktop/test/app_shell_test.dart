@@ -252,12 +252,12 @@ void main() {
     for (final label in ['新对话', '项目', '资源', '设置']) {
       expect(find.text(label), findsWidgets);
     }
-    for (final label in ['应用', '数据库', '存储']) {
+    for (final label in ['应用', '数据库', '文件存储']) {
       expect(find.text(label), findsNothing);
     }
     await tester.tap(find.text('资源'));
     await tester.pump();
-    for (final label in ['应用', '数据库', '存储']) {
+    for (final label in ['应用', '数据库', '文件存储']) {
       expect(find.text(label), findsOneWidget);
     }
     expect(find.text('测试空间'), findsOneWidget);

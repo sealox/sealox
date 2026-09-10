@@ -18,7 +18,10 @@ class DetailScreen extends StatelessWidget {
         key: ValueKey('project:${route.name}'),
         name: route.name,
       ),
-      'storage' => FileStorageScreen(key: ValueKey('storage:${route.name}'), name: route.name),
+      'storage' => FileStorageScreen(
+        key: ValueKey('storage:${route.name}'),
+        name: route.name,
+      ),
       'database' => DatabaseDetailScreen(
         key: ValueKey('database:${route.name}'),
         name: route.name,

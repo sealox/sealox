@@ -1,3 +1,5 @@
+import '../core/auto_refresh.dart';
+
 import 'package:flutter/material.dart';
 
 import '../core/json.dart';
@@ -12,7 +14,13 @@ class TemplatesScreen extends StatefulWidget {
   State<TemplatesScreen> createState() => _TemplatesScreenState();
 }
 
-class _TemplatesScreenState extends State<TemplatesScreen> {
+class _TemplatesScreenState extends State<TemplatesScreen>
+    with AutoRefresh<TemplatesScreen> {
+  @override
+  bool get canAutoRefresh => deploying.isEmpty;
+  @override
+  Future<void> refreshAutomatically() => _load();
+
   List<JsonMap>? templates;
   final search = TextEditingController();
   String category = '全部';
@@ -47,14 +55,6 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
         });
       }
     }
-  }
-
-  void _retry() {
-    setState(() {
-      templates = null;
-      error = null;
-    });
-    _load();
   }
 
   @override
@@ -172,11 +172,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: OutlinedButton.icon(
-                onPressed: _retry,
-                icon: const Icon(Icons.refresh, size: 17),
-                label: const Text('重试'),
-              ),
+              child: const SizedBox.shrink(),
             ),
           ),
         Expanded(

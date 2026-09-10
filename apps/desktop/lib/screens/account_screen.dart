@@ -1,3 +1,5 @@
+import '../core/auto_refresh.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -15,7 +17,13 @@ class AccountScreen extends StatefulWidget {
   State<AccountScreen> createState() => _AccountScreenState();
 }
 
-class _AccountScreenState extends State<AccountScreen> {
+class _AccountScreenState extends State<AccountScreen>
+    with AutoRefresh<AccountScreen> {
+  @override
+  bool get canAutoRefresh => !busy;
+  @override
+  Future<void> refreshAutomatically() => _load();
+
   final deepseekKey = TextEditingController();
   StreamSubscription<BackendEvent>? subscription;
   JsonMap? model;

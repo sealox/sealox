@@ -1,3 +1,5 @@
+import '../core/auto_refresh.dart';
+
 import 'dart:async';
 import 'dart:math';
 
@@ -23,7 +25,9 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> with AutoRefresh<ChatScreen> {
+  @override
+  Future<void> refreshAutomatically() => _loadStarterTemplates(silent: true);
   final input = TextEditingController();
   final scroll = ScrollController();
   StreamSubscription<BackendEvent>? subscription;
@@ -71,10 +75,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _loadStarterTemplates() async {
+  Future<void> _loadStarterTemplates({bool silent = false}) async {
     if (mounted) {
       setState(() {
-        starterTemplates = null;
+        if (!silent) starterTemplates = null;
         starterTemplateError = null;
       });
     }
@@ -93,16 +97,18 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         setState(() {
           starterTemplates = templates;
-          shownStarterTemplateCount = min(
+          if (!silent) {
+            shownStarterTemplateCount = min(
             _starterTemplateBatchSize,
             templates.length,
           );
+          }
           if (!_starterTemplateCategories(templates)
               .contains(starterTemplateCategory)) {
             starterTemplateCategory = '全部';
           }
         });
-        _revealStarterTemplates();
+        if (!silent) _revealStarterTemplates();
       }
     } catch (exception) {
       if (mounted) {
@@ -704,14 +710,7 @@ class _ChatScreenState extends State<ChatScreen> {
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
-          Tooltip(
-            message: '重新加载模板',
-            child: IconButton(
-              icon: const Icon(Icons.refresh, size: 18),
-              onPressed: _loadStarterTemplates,
-              visualDensity: VisualDensity.compact,
-            ),
-          ),
+          const SizedBox.shrink(),
         ],
       );
     }

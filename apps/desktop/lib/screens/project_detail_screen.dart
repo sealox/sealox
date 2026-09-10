@@ -1,3 +1,5 @@
+import '../core/auto_refresh.dart';
+
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -17,7 +19,13 @@ class ProjectDetailScreen extends StatefulWidget {
   State<ProjectDetailScreen> createState() => _ProjectDetailScreenState();
 }
 
-class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
+class _ProjectDetailScreenState extends State<ProjectDetailScreen>
+    with AutoRefresh<ProjectDetailScreen> {
+  @override
+  bool get canAutoRefresh => !busy;
+  @override
+  Future<void> refreshAutomatically() => _load();
+
   JsonMap? detail;
   String? error;
   bool busy = false;

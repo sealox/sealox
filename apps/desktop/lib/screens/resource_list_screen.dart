@@ -21,6 +21,65 @@ class _ResourceListScreenState extends State<ResourceListScreen> {
   final search = TextEditingController();
   bool busy = false;
 
+  Future<void> _credentials() async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      final data = jsonMap(
+        await AppScope.of(
+          context,
+          listen: false,
+        ).invoke('getWorkspaceStorageCredentials'),
+      );
+      if (!mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialog) => AlertDialog(
+          title: const Text('工作空间 OSS 访问密钥'),
+          content: SizedBox(
+            width: 560,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final entry in {
+                  'Access Key': 'accessKey',
+                  'Secret Key': 'secretKey',
+                  'URL': 'url',
+                }.entries)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(entry.key),
+                        const SizedBox(height: 4),
+                        SelectableText(stringValue(data[entry.value])),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialog),
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   @override
   void dispose() {
     search.dispose();
@@ -62,19 +121,12 @@ class _ResourceListScreenState extends State<ResourceListScreen> {
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(width: 6),
-              IconButton(
-                tooltip: '刷新',
-                onPressed: controller.refreshing
-                    ? null
-                    : controller.refreshResources,
-                icon: controller.refreshing
-                    ? const SizedBox(
-                        width: 17,
-                        height: 17,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.refresh, size: 19),
-              ),
+              if (widget.type == ResourceType.storage)
+                TextButton.icon(
+                  onPressed: busy ? null : _credentials,
+                  icon: const Icon(Icons.key_outlined, size: 19),
+                  label: const Text('获取密钥'),
+                ),
             ],
           ),
         ),
@@ -170,9 +222,75 @@ class _ResourceListScreenState extends State<ResourceListScreen> {
     );
   }
 
+  Future<void> _setPolicy(
+    AppController controller,
+    JsonMap item,
+    String policy,
+  ) async {
+    final name = stringValue(item['name']);
+    final isPublic = policy == 'publicRead';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text(isPublic ? 'Set public' : 'Set private'),
+        content: Text(
+          isPublic
+              ? '将 $name 设置为公开只读，任何持有文件 URL 的人都可读取文件。写入仍需要密钥。'
+              : '将 $name 设置为私有，匿名访问将被禁止。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialog, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialog, true),
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    setState(() => busy = true);
+    try {
+      await controller.invoke('setStoragePolicy', [name, policy]);
+      await controller.refreshResources();
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('访问策略已提交，正在同步生效')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   Widget? _menu(AppController controller, JsonMap snapshot, JsonMap item) {
-    if (widget.type == ResourceType.storage ||
-        widget.type == ResourceType.databases) {
+    if (widget.type == ResourceType.storage) {
+      return PopupMenuButton<String>(
+        tooltip: '访问权限',
+        enabled: !busy,
+        icon: const Icon(Icons.more_horiz, size: 19),
+        onSelected: (policy) => _setPolicy(controller, item, policy),
+        itemBuilder: (_) => [
+          PopupMenuItem(
+            value: 'publicRead',
+            enabled: item['policy'] != 'publicRead',
+            child: const Text('Set public'),
+          ),
+          PopupMenuItem(
+            value: 'private',
+            enabled: item['policy'] != 'private',
+            child: const Text('Set private'),
+          ),
+        ],
+      );
+    }
+    if (widget.type == ResourceType.databases) {
       return null;
     }
     if (widget.type == ResourceType.apps && !boolValue(item['launchpad'])) {
