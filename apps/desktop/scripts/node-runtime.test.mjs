@@ -43,7 +43,7 @@ test('includes the packaged release runtime as a development fallback', () => {
 
   assert.ok(
     candidates.includes(
-      '/repo/apps/desktop/build/macos/Build/Products/Release/Helios.app/Contents/Resources/helios/node/bin/node'
+      '/repo/apps/desktop/build/macos/Build/Products/Release/Sealos.app/Contents/Resources/helios/node/bin/node'
     )
   )
 })

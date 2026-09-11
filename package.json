@@ -15,7 +15,8 @@
     "typecheck:flutter": "cd apps/desktop && flutter analyze",
     "test:desktop": "npm run build:backend && node --test apps/desktop/scripts/*.test.mjs && npm test -w eve && npm test -w @helios/desktop-backend && cd apps/desktop && flutter test",
     "build:mac": "node apps/desktop/scripts/build-desktop.mjs macos",
-    "build:win": "node apps/desktop/scripts/build-desktop.mjs windows"
+    "build:win": "node apps/desktop/scripts/build-desktop.mjs windows",
+    "publish:mac": "node apps/desktop/scripts/publish-mac.mjs"
   },
   "engines": {
     "node": "24.x"

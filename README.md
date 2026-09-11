@@ -28,7 +28,6 @@ npm run dev:eve      # 启动本地 eve agent
 npm run typecheck    # TypeScript 工作区类型检查
 npm run typecheck:flutter # Flutter 静态分析
 npm run test:desktop # RPC 契约测试 + Flutter 测试
-npm run lint         # Electron app 的 eslint
 npm run build:mac    # 生成当前 Mac 架构的 Flutter DMG
 npm run build:win    # 生成 Flutter Windows x64 安装程序
 ```

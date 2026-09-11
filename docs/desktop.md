@@ -6,7 +6,7 @@
 
 - Sealos 认证、Kubernetes 资源、项目、应用、数据库、存储、模板、AI Proxy 和工作空间继续使用 `apps/desktop-backend/src/core/sealos` 中的同一份 TypeScript 实现。
 - Agent、对话存储、附件读取和 Eve 运行时继续使用 `apps/desktop-backend/src/core/agent` 和 `apps/eve`。
-- `desktop-api.ts` 是 Electron IPC 与 Flutter RPC 共用的唯一方法调度层。增删 `HeliosApi` 时，`apps/desktop-backend/test/contract.test.mjs` 会阻止任一宿主漏接。
+- `desktop-api.ts` 是 Flutter RPC 的方法调度层，也是 sidecar 合同。增删 `HeliosApi` 时，`apps/desktop-backend/test/contract.test.mjs` 会阻止漏接。
 
 sidecar 与 Flutter 通过标准输入输出的 NDJSON 通信，不开本地端口。每个请求是 `{id, method, args}`，响应是 `{id, result}` 或 `{id, error}`，事件是 `{event, data}`。
 
@@ -20,13 +20,13 @@ sidecar 与 Flutter 通过标准输入输出的 NDJSON 通信，不开本地端�
 
 Flutter 开发模式会从仓库的 `apps/desktop-backend/dist/helios-backend.cjs` 启动 sidecar。
 `npm run dev` 会验证 sidecar 使用 Node 24；当前 shell 不是 Node 24 时，会优先复用已经构建的
-Helios Release 中的内置 Node 24。可使用 `HELIOS_BACKEND_PATH` 和 `HELIOS_NODE_PATH` 覆盖定位，
+Sealos Release 中的内置 Node 24。可使用 `HELIOS_BACKEND_PATH` 和 `HELIOS_NODE_PATH` 覆盖定位，
 但覆盖的 Node 仍必须是 24.x。
 
 ## 发行
 
-- `npm run build:mac` 按当前 Mac 架构构建 `apps/desktop/dist/Helios-<version>-mac-<arm64|x64>.dmg`。
-- `npm run build:win` 在 Windows x64 上构建 `apps/desktop/dist/Helios-<version>-windows-x64.exe`，需要 Inno Setup 6，可用 `ISCC_PATH` 指定 `ISCC.exe`。
+- `npm run build:mac` 按当前 Mac 架构构建 `apps/desktop/dist/Sealos-<version>-mac-<arm64|x64>.dmg`。
+- `npm run build:win` 在 Windows x64 上构建 `apps/desktop/dist/Sealos-<version>-windows-x64.exe`，需要 Inno Setup 6，可用 `ISCC_PATH` 指定 `ISCC.exe`。
 - 两种发行包都内置 Node 24 和 Eve 产物。Windows 包内置 PortableGit，为 Agent 提供 Bash。
 - 打包脚本会根据 Node 官方 `SHASUMS256.txt` 校验运行时，并使用发行资产的固定
   SHA-256 校验 PortableGit。
@@ -39,9 +39,9 @@ Helios Release 中的内置 Node 24。可使用 `HELIOS_BACKEND_PATH` 和 `HELIO
   "version": "0.9.0",
   "notes": "...",
   "artifacts": {
-    "macos-arm64": { "url": ".../Helios-0.9.0-mac-arm64.dmg", "sha256": "..." },
-    "macos-x64": { "url": ".../Helios-0.9.0-mac-x64.dmg", "sha256": "..." },
-    "windows-x64": { "url": ".../Helios-0.9.0-windows-x64.exe", "sha256": "..." }
+    "macos-arm64": { "url": ".../Sealos-0.9.0-mac-arm64.dmg", "sha256": "..." },
+    "macos-x64": { "url": ".../Sealos-0.9.0-mac-x64.dmg", "sha256": "..." },
+    "windows-x64": { "url": ".../Sealos-0.9.0-windows-x64.exe", "sha256": "..." }
   }
 }
 ```

@@ -43,7 +43,12 @@ const dist = join(desktopRoot, 'dist')
 mkdirSync(dist, { recursive: true })
 if (platform === 'macos') {
   const macArchitecture = process.arch
-  const app = join(desktopRoot, 'build', 'macos', 'Build', 'Products', 'Release', 'Helios.app')
+  const app = join(desktopRoot, 'build', 'macos', 'Build', 'Products', 'Release', 'Sealos.app')
+  if (!existsSync(app)) {
+    throw new Error(
+      `Missing ${app}. PRODUCT_NAME must be Sealos so flutter build macos produces Sealos.app.`
+    )
+  }
   const runtime = join(app, 'Contents', 'Resources', 'helios')
   run(process.execPath, [
     join(desktopRoot, 'scripts', 'prepare-runtime.mjs'),
@@ -51,9 +56,9 @@ if (platform === 'macos') {
     runtime
   ])
   run('codesign', ['--force', '--deep', '--sign', '-', app])
-  const dmg = join(dist, `Helios-${version}-mac-${macArchitecture}.dmg`)
+  const dmg = join(dist, `Sealos-${version}-mac-${macArchitecture}.dmg`)
   rmSync(dmg, { force: true })
-  run('hdiutil', ['create', '-volname', 'Helios', '-srcfolder', app, '-ov', '-format', 'UDZO', dmg])
+  run('hdiutil', ['create', '-volname', 'Sealos', '-srcfolder', app, '-ov', '-format', 'UDZO', dmg])
 } else {
   const build = join(desktopRoot, 'build', 'windows', 'x64', 'runner', 'Release')
   run(process.execPath, [
