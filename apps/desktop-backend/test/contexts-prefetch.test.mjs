@@ -157,6 +157,9 @@ async function seedLiveSlot() {
 
 beforeEach(async () => {
   await rm(join(sealosDir, 'contexts'), { recursive: true, force: true })
+  await rm(join(sealosDir, 'gzg.sealos.run'), { recursive: true, force: true })
+  await rm(join(sealosDir, 'hzh.sealos.run'), { recursive: true, force: true })
+  await rm(join(sealosDir, 'bja.sealos.run'), { recursive: true, force: true })
   await rm(KUBECONFIG_PATH, { force: true })
   await rm(AUTH_PATH, { force: true })
 })
@@ -193,9 +196,9 @@ test('prefetch archives contexts without changing the live slot', async () => {
     false
   )
 
-  const liveDir = join(sealosDir, 'contexts', 'gzg.sealos.run', LIVE_UID)
-  const teamDir = join(sealosDir, 'contexts', 'gzg.sealos.run', TEAM_UID)
-  const hzhDir = join(sealosDir, 'contexts', 'hzh.sealos.run', HZH_UID)
+  const liveDir = join(sealosDir, 'gzg.sealos.run', LIVE_UID)
+  const teamDir = join(sealosDir, 'gzg.sealos.run', TEAM_UID)
+  const hzhDir = join(sealosDir, 'hzh.sealos.run', HZH_UID)
 
   assert.equal(await readFile(join(liveDir, 'kubeconfig'), 'utf8'), liveKubeconfig)
   assert.equal(await readFile(join(teamDir, 'kubeconfig'), 'utf8'), teamKubeconfig)
@@ -228,8 +231,8 @@ test('409 region is skipped and does not create a host folder', async () => {
 
   await prefetchSiteContexts()
 
-  assert.equal(existsSync(join(sealosDir, 'contexts', 'bja.sealos.run')), false)
-  assert.equal(existsSync(join(sealosDir, 'contexts', 'hzh.sealos.run', HZH_UID)), true)
+  assert.equal(existsSync(join(sealosDir, 'bja.sealos.run')), false)
+  assert.equal(existsSync(join(sealosDir, 'hzh.sealos.run', HZH_UID)), true)
   assert.ok(
     calls.some(
       (call) => call.url === 'https://bja.sealos.run/api/auth/regionToken' && call.method === 'POST'
@@ -241,17 +244,18 @@ test('409 region is skipped and does not create a host folder', async () => {
   )
 })
 
-test('logout deletes contexts as well as live files', async () => {
+test('logout deletes region host dirs as well as live files', async () => {
   await seedLiveSlot()
   installFetchMock()
   await prefetchSiteContexts()
-  assert.equal(existsSync(join(sealosDir, 'contexts', 'gzg.sealos.run', LIVE_UID)), true)
+  assert.equal(existsSync(join(sealosDir, 'gzg.sealos.run', LIVE_UID)), true)
 
   await logout()
 
   assert.equal(existsSync(KUBECONFIG_PATH), false)
   assert.equal(existsSync(AUTH_PATH), false)
-  assert.equal(existsSync(join(sealosDir, 'contexts')), false)
+  assert.equal(existsSync(join(sealosDir, 'gzg.sealos.run')), false)
+  assert.equal(existsSync(join(sealosDir, 'hzh.sealos.run')), false)
   assert.equal(getStatus().authenticated, false)
 })
 
@@ -276,6 +280,6 @@ test('path traversal uid is rejected and does not write outside contexts', async
   )
 
   assert.equal(existsSync(join(sealosDir, 'outside')), false)
-  assert.equal(existsSync(join(sealosDir, 'contexts', 'outside')), false)
+  assert.equal(existsSync(join(sealosDir, 'gzg.sealos.run')), false)
   assert.equal(existsSync(join(sealosDir, 'kubeconfig')), false)
 })

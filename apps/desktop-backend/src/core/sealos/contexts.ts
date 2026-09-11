@@ -12,7 +12,7 @@ import {
 
 /**
  * 同一站点里已初始化可用区的工作空间凭证档案。
- * 顶层 kubeconfig / auth.json 仍是正在用的那一套；kubectl 与 Agent 不读这里。
+ * 落在 `~/.sealos/{区域host}/{空间uid}/`；顶层 kubeconfig / auth.json 仍是正在用的那一套。
  */
 
 export interface ContextWorkspace {
@@ -97,14 +97,23 @@ function assertSafeSegment(value: string, label: string): void {
   }
 }
 
+/** 区域档案目录名：必须像 host（带点），避免误删 kubeconfig 等顶层文件。 */
+function isRegionHostDir(name: string): boolean {
+  return /^[a-z0-9][a-z0-9.-]*\.[a-z0-9.-]+$/i.test(name)
+}
+
 export function contextDir(regionUrl: string, workspaceUid: string): string {
   const host = new URL(regionUrl).hostname
   assertSafeSegment(host, 'host')
   assertSafeSegment(workspaceUid, 'uid')
-  const root = resolve(join(SEALOS_DIR, 'contexts'))
+  if (!isRegionHostDir(host)) {
+    throw new Error('invalid context host')
+  }
+  const root = resolve(SEALOS_DIR)
   const dir = resolve(join(root, host, workspaceUid))
   const rel = relative(root, dir)
-  if (!rel || rel.startsWith('..') || isAbsolute(rel)) {
+  const parts = rel.split(/[/\\]/)
+  if (!rel || rel.startsWith('..') || isAbsolute(rel) || parts.length !== 2) {
     throw new Error('invalid context path')
   }
   return dir
@@ -170,7 +179,19 @@ export async function updateContextTeamName(
 }
 
 export async function clearContexts(): Promise<void> {
-  await fs.rm(join(SEALOS_DIR, 'contexts'), { recursive: true, force: true })
+  let entries: { name: string; isDirectory(): boolean }[]
+  try {
+    entries = await fs.readdir(SEALOS_DIR, { withFileTypes: true })
+  } catch {
+    return
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    // `contexts` 是上一版包装目录，登出时一并清掉。
+    if (entry.name === 'contexts' || isRegionHostDir(entry.name)) {
+      await fs.rm(join(SEALOS_DIR, entry.name), { recursive: true, force: true })
+    }
+  }
 }
 
 function snapshotLive(): LiveSnapshot | undefined {

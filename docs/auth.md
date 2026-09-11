@@ -6,9 +6,9 @@
 
 1. 未登录：选区域，然后 **使用 Sealos 账号登录**（推荐），或粘贴 kubeconfig。
 2. 登录后进入私人工作空间。当前版本界面上不能换区域。
-3. 账号登录成功后，后台把同一站点里**已初始化**可用区的每个工作空间凭证写入 `~/.sealos/contexts/{区域host}/{空间uid}/`（`kubeconfig` + `session.json`）。顶层 `~/.sealos/kubeconfig` 和 `auth.json` 仍是正在用的那一套；kubectl、Agent、use-sealos 只认这两份。预拉失败不影响登录。未初始化的可用区不创建、不 `autoInit`。粘贴 kubeconfig 不预拉。
+3. 账号登录成功后，后台把同一站点里**已初始化**可用区的每个工作空间凭证写入 `~/.sealos/{区域host}/{空间uid}/`（`kubeconfig` + `session.json`）。顶层 `~/.sealos/kubeconfig` 和 `auth.json` 仍是正在用的那一套；kubectl、Agent、use-sealos 只认这两份。预拉失败不影响登录。未初始化的可用区不创建、不 `autoInit`。粘贴 kubeconfig 不预拉。
 4. 切工作空间：换到那套资源，并更新顶层登录态和对应档案。进行中的对话丢掉。工作空间是身份，不是设置项。
-5. 退出登录：清掉顶层登录态和 `contexts/`。对话模型 Key 是人的，退出不清。
+5. 退出登录：清掉顶层登录态和各区域 host 目录。对话模型 Key 是人的，退出不清。
 
 邀请、重命名、新建工作空间，跟切空间一样，都是授权域里的事。
 
