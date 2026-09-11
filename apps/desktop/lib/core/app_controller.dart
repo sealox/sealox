@@ -8,11 +8,23 @@ import 'json.dart';
 enum DesktopTab { home, templates, projects, apps, databases, storage, account }
 
 class DetailRoute {
-  const DetailRoute(this.type, this.name, {this.kind});
+  const DetailRoute(
+    this.type,
+    this.name, {
+    this.kind,
+    this.database,
+    this.table,
+    this.tables = const [],
+    this.project,
+  });
 
   final String type;
   final String name;
   final String? kind;
+  final String? database;
+  final String? table;
+  final List<String> tables;
+  final String? project;
 }
 
 class AppController extends ChangeNotifier {
@@ -245,7 +257,7 @@ class AppController extends ChangeNotifier {
     details.removeWhere((route) {
       final list = switch (route.type) {
         'project' => jsonList(data['projects']),
-        'database' => jsonList(data['databases']),
+        'database' || 'database-data' => jsonList(data['databases']),
         'storage' => jsonList(data['buckets']),
         _ => jsonList(data['apps']),
       };

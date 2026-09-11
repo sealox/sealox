@@ -158,9 +158,14 @@ class _MetricChart extends StatelessWidget {
 }
 
 class PodsSection extends StatelessWidget {
-  const PodsSection({required this.pods, super.key});
+  const PodsSection({
+    required this.pods,
+    this.showCopyButtons = true,
+    super.key,
+  });
 
   final List<JsonMap> pods;
+  final bool showCopyButtons;
 
   @override
   Widget build(BuildContext context) {
@@ -189,7 +194,11 @@ class PodsSection extends StatelessWidget {
                   child: Column(
                     children: [
                       KeyValue('节点', stringValue(pod['node'])),
-                      KeyValue('IP', stringValue(pod['ip']), copy: true),
+                      KeyValue(
+                        'IP',
+                        stringValue(pod['ip']),
+                        copy: showCopyButtons,
+                      ),
                       KeyValue('创建时间', displayDate(pod['createdAt'])),
                       for (final container in jsonList(pod['containers']))
                         ListTile(
@@ -308,6 +317,7 @@ class _PodLogsPanelState extends State<PodLogsPanel> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
+                    isExpanded: true,
                     key: ValueKey('pod-$selectedPod-${widget.pods.length}'),
                     initialValue: selectedPod,
                     decoration: const InputDecoration(labelText: 'Pod'),
@@ -315,7 +325,11 @@ class _PodLogsPanelState extends State<PodLogsPanel> {
                         .map(
                           (pod) => DropdownMenuItem(
                             value: stringValue(pod['name']),
-                            child: Text(stringValue(pod['name'])),
+                            child: Text(
+                              stringValue(pod['name']),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         )
                         .toList(),
@@ -335,6 +349,7 @@ class _PodLogsPanelState extends State<PodLogsPanel> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: DropdownButtonFormField<String>(
+                    isExpanded: true,
                     key: ValueKey(
                       'container-$selectedPod-$selectedContainer-${containers.length}',
                     ),
@@ -344,7 +359,11 @@ class _PodLogsPanelState extends State<PodLogsPanel> {
                         .map(
                           (container) => DropdownMenuItem(
                             value: stringValue(container['name']),
-                            child: Text(stringValue(container['name'])),
+                            child: Text(
+                              stringValue(container['name']),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         )
                         .toList(),

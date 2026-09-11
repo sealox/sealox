@@ -10,10 +10,14 @@
   },
   "dependencies": {
     "@kubernetes/client-node": "^2.0.0",
-    "minio": "^8.0.5"
+    "minio": "^8.0.5",
+    "mongodb": "^7.6.0",
+    "mysql2": "^3.24.4",
+    "pg": "^8.23.0"
   },
   "devDependencies": {
     "@types/node": "^22.19.1",
+    "@types/pg": "^8.23.1",
     "esbuild": "^0.25.0",
     "typescript": "^5.9.3"
   }

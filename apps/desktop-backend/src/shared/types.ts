@@ -295,6 +295,25 @@ export interface DatabaseUsedBy {
 export interface DatabaseSchemaNode {
   name: string
   tables: string[]
+  error?: string
+}
+
+export interface DatabaseTableRequest {
+  instance: string
+  database: string
+  table: string
+  page?: number
+  pageSize?: number
+  filter?: { column: string; operator: 'contains' | 'eq' | 'ne' | 'isNull' | 'notNull'; value?: string }
+}
+
+export interface DatabaseTableData {
+  columns: { name: string; type: string }[]
+  rows: (string | null)[][]
+  page: number
+  pageSize: number
+  total: number
+  truncated: boolean
 }
 
 export interface DatabaseSchemaTree {
@@ -693,6 +712,7 @@ export interface HeliosApi {
   getDatabaseDetail(name: string): Promise<DatabaseInstanceDetail>
   getDatabaseMonitor(name: string): Promise<DatabaseMonitor>
   getDatabaseSchema(name: string): Promise<DatabaseSchemaTree>
+  getDatabaseTableData(request: DatabaseTableRequest): Promise<DatabaseTableData>
   pauseDatabase(name: string): Promise<void>
   startDatabase(name: string): Promise<void>
   restartDatabase(name: string): Promise<void>

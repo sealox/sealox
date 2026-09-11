@@ -29,10 +29,10 @@ import {
   disableDatabasePublic,
   enableDatabasePublic,
   fetchDatabaseDetail,
-  fetchDatabaseMonitor,
-  fetchDatabaseSchema
+  fetchDatabaseMonitor
 } from './sealos/database'
 import { fetchAppDetail, fetchAppMonitor, fetchPodLogs, fetchProjectDetail } from './sealos/details'
+import { fetchDatabaseCatalog, fetchDatabaseTableData } from './sealos/database-data'
 import {
   deleteApp,
   deleteDatabase,
@@ -96,6 +96,7 @@ export const DESKTOP_METHODS = [
   'getDatabaseDetail',
   'getDatabaseMonitor',
   'getDatabaseSchema',
+  'getDatabaseTableData',
   'pauseDatabase',
   'startDatabase',
   'restartDatabase',
@@ -225,7 +226,9 @@ export async function invokeDesktopMethod(
     case 'getDatabaseMonitor':
       return fetchDatabaseMonitor(String(args[0]))
     case 'getDatabaseSchema':
-      return fetchDatabaseSchema(String(args[0]))
+      return fetchDatabaseCatalog(String(args[0]))
+    case 'getDatabaseTableData':
+      return fetchDatabaseTableData(args[0] as import('../shared/types').DatabaseTableRequest)
     case 'pauseDatabase':
       return pauseDatabase(String(args[0]))
     case 'startDatabase':

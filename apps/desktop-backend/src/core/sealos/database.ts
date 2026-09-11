@@ -282,6 +282,24 @@ function parsePublicConnection(raw: unknown): {
   return { enabled: false, parsed: null }
 }
 
+/** Resolve only the private connection, using a snapshot of the current workspace. */
+export async function databaseAccess(name: string) {
+  const dbName = requireName(name)
+  const kubeconfigSnapshot = readKubeconfigText()
+  const { kc, namespace } = loadNamespace()
+  const { status, body } = await dbFetch(
+    `${dbBase()}/api/v2alpha/databases/${encodeURIComponent(dbName)}`,
+    { method: 'GET' }, 'read', DETAIL_TIMEOUT_MS
+  )
+  if (status !== 200) throw mapDbError(status, body, 'read')
+  // Never combine credentials fetched before a workspace switch with the new workspace.
+  if (readKubeconfigText() !== kubeconfigSnapshot) throw new Error('工作空间身份已变化，请重新打开数据库')
+  const data = asRecord(body)
+  const connection = parseConnectionObject(asRecord(data?.connection)?.privateConnection)
+  if (!connection) throw new Error('数据库内网凭证尚未就绪')
+  return { kc, namespace, connection, engine: asString(data?.type) ?? '', name: dbName }
+}
+
 function eventsForDatabase(
   events: CoreV1Event[],
   dbName: string,

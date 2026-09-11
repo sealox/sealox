@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/app_controller.dart';
 import 'app_detail_screen.dart';
 import 'database_detail_screen.dart';
+import 'database_data_screen.dart';
 import 'file_storage_screen.dart';
 import 'project_detail_screen.dart';
 
@@ -25,6 +26,14 @@ class DetailScreen extends StatelessWidget {
       'database' => DatabaseDetailScreen(
         key: ValueKey('database:${route.name}'),
         name: route.name,
+      ),
+      'database-data' => DatabaseDataScreen(
+        key: ValueKey('database-data:${route.name}:${route.database}'),
+        instance: route.name,
+        database: route.database!,
+        initialTable: route.table!,
+        tables: route.tables,
+        project: route.project,
       ),
       _ => AppDetailScreen(
         key: ValueKey('app:${route.name}:${route.kind}'),

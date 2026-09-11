@@ -52,32 +52,41 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen>
       if (!mounted) return;
       setState(() => detail = jsonMap(loadedDetail));
 
-      try {
-        final loadedMonitor = await controller.invoke('getDatabaseMonitor', [
-          widget.name,
-        ]);
-        if (mounted) monitor = jsonMap(loadedMonitor);
-      } catch (_) {
-        if (mounted) {
-          monitor = {
-            'available': false,
-            'cpu': const <Object?>[],
-            'memory': const <Object?>[],
-            'disk': const <Object?>[],
-          };
-        }
-      }
+      await Future.wait([
+        () async {
+          try {
+            final loadedMonitor = await controller.invoke(
+              'getDatabaseMonitor',
+              [widget.name],
+            );
+            if (mounted) monitor = jsonMap(loadedMonitor);
+          } catch (_) {
+            if (mounted) {
+              monitor = {
+                'available': false,
+                'cpu': const <Object?>[],
+                'memory': const <Object?>[],
+                'disk': const <Object?>[],
+              };
+            }
+          }
 
-      try {
-        final loadedSchema = await controller.invoke('getDatabaseSchema', [
-          widget.name,
-        ]);
-        if (mounted) schema = jsonMap(loadedSchema);
-      } catch (_) {
-        if (mounted) {
-          schema = {'supported': false, 'reason': 'error'};
-        }
-      }
+          if (mounted) setState(() {});
+        }(),
+        () async {
+          try {
+            final loadedSchema = await controller.invoke('getDatabaseSchema', [
+              widget.name,
+            ]);
+            if (mounted) schema = jsonMap(loadedSchema);
+          } catch (_) {
+            if (mounted) {
+              schema = {'supported': false, 'reason': 'error'};
+            }
+          }
+          if (mounted) setState(() {});
+        }(),
+      ]);
       if (mounted) setState(() {});
     } catch (exception) {
       if (mounted) setState(() => error = exception.toString());
@@ -306,6 +315,9 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen>
         if (boolValue(data['publicEnabled']))
           _connectionCard('公网', publicConnection, 'public', showTitle: false),
         const SizedBox(height: 16),
+        const SectionTitle('数据库与表'),
+        _schemaSection(),
+        const SizedBox(height: 16),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(14),
@@ -370,17 +382,21 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen>
                 ),
         ),
         const SizedBox(height: 16),
-        const SectionTitle('结构'),
-        _schemaSection(),
-        const SizedBox(height: 16),
         const SectionTitle('Pods'),
-        PodsSection(pods: jsonList(data['pods'])),
+        PodsSection(pods: jsonList(data['pods']), showCopyButtons: false),
         const SizedBox(height: 16),
         const SectionTitle('日志尾部快照'),
         PodLogsPanel(pods: jsonList(data['pods'])),
         const SizedBox(height: 16),
-        const SectionTitle('事件'),
-        EventsSection(events: jsonList(data['events'])),
+        ExpansionTile(
+          initiallyExpanded: false,
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: EdgeInsets.zero,
+          dense: true,
+          visualDensity: VisualDensity.compact,
+          title: Text('事件', style: Theme.of(context).textTheme.titleMedium),
+          children: [EventsSection(events: jsonList(data['events']))],
+        ),
       ],
     );
   }
@@ -407,24 +423,9 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen>
               Text(title, style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 4),
             ],
-            KeyValue(
-              'Host',
-              stringValue(connection['host']),
-              copy: true,
-              dense: true,
-            ),
-            KeyValue(
-              'Port',
-              stringValue(connection['port']),
-              copy: true,
-              dense: true,
-            ),
-            KeyValue(
-              '用户名',
-              stringValue(connection['username']),
-              copy: true,
-              dense: true,
-            ),
+            KeyValue('Host', stringValue(connection['host']), dense: true),
+            KeyValue('Port', stringValue(connection['port']), dense: true),
+            KeyValue('用户名', stringValue(connection['username']), dense: true),
             _secretValue(
               '$prefix-password',
               '密码',
@@ -439,7 +440,6 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen>
               KeyValue(
                 'Endpoint',
                 stringValue(connection['endpoint']),
-                copy: true,
                 dense: true,
               ),
             const Divider(height: 18),
@@ -447,6 +447,7 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen>
               '$prefix-env',
               'DATABASE_URL',
               stringValue(connection['connectionString']),
+              copy: true,
             ),
           ],
         ),
@@ -454,7 +455,12 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen>
     );
   }
 
-  Widget _secretValue(String id, String label, String value) {
+  Widget _secretValue(
+    String id,
+    String label,
+    String value, {
+    bool copy = false,
+  }) {
     final visible = revealed.contains(id);
     final display = visible ? value : (value.isEmpty ? '-' : '•' * 16);
     return Padding(
@@ -486,17 +492,18 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen>
               size: 17,
             ),
           ),
-          IconButton(
-            tooltip: '复制',
-            visualDensity: VisualDensity.compact,
-            onPressed: value.isEmpty
-                ? null
-                : () => AppScope.of(
-                    context,
-                    listen: false,
-                  ).invoke('copyText', [value]),
-            icon: const Icon(Icons.content_copy, size: 16),
-          ),
+          if (copy)
+            IconButton(
+              tooltip: '复制',
+              visualDensity: VisualDensity.compact,
+              onPressed: value.isEmpty
+                  ? null
+                  : () => AppScope.of(
+                      context,
+                      listen: false,
+                    ).invoke('copyText', [value]),
+              icon: const Icon(Icons.content_copy, size: 16),
+            ),
         ],
       ),
     );
@@ -507,7 +514,8 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen>
     if (data == null) {
       return const SizedBox(height: 80, child: BrandLoading());
     }
-    if (!boolValue(data['supported'])) {
+    if (!boolValue(data['supported']) ||
+        stringValue(data['reason']).isNotEmpty) {
       final reason = switch (stringValue(data['reason'])) {
         'not-running' => '数据库尚未运行，暂时无法读取结构。',
         'unsupported' => '当前引擎暂不支持结构读取。',
@@ -529,11 +537,35 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen>
               children: [
                 for (final database in databases)
                   ExpansionTile(
+                    key: PageStorageKey(
+                      'database-schema-${widget.name}-${database['name']}',
+                    ),
                     dense: true,
                     visualDensity: VisualDensity.compact,
-                    leading: const Icon(Icons.schema_outlined),
+                    leading: const Icon(Icons.storage_outlined, size: 18),
+                    subtitle: Text(
+                      '${listValue(database['tables']).length} ${stringValue(detail?['engine']) == 'mongodb' ? '个集合' : '张表'}',
+                    ),
                     title: Text(stringValue(database['name'])),
                     children: [
+                      if (stringValue(database['error']).isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                          child: ErrorBanner(
+                            message: stringValue(database['error']),
+                          ),
+                        )
+                      else if (listValue(database['tables']).isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(52, 4, 16, 12),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              '暂无表或集合',
+                              style: TextStyle(fontSize: 13),
+                            ),
+                          ),
+                        ),
                       for (final table in listValue(database['tables']))
                         ListTile(
                           dense: true,
@@ -547,6 +579,20 @@ class _DatabaseDetailScreenState extends State<DatabaseDetailScreen>
                             size: 17,
                           ),
                           title: Text(stringValue(table)),
+                          trailing: const Icon(Icons.chevron_right, size: 17),
+                          onTap: () =>
+                              AppScope.of(context, listen: false).openDetail(
+                                DetailRoute(
+                                  'database-data',
+                                  widget.name,
+                                  database: stringValue(database['name']),
+                                  table: stringValue(table),
+                                  tables: listValue(database['tables'])
+                                      .map((t) => stringValue(t))
+                                      .toList(),
+                                  project: stringValue(detail?['project']),
+                                ),
+                              ),
                         ),
                     ],
                   ),
