@@ -13,9 +13,9 @@ const CHECK_INTERVAL_MS = 30 * 60 * 1000
 const MANIFEST_TIMEOUT_MS = 15_000
 const DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1000
 const ARTIFACT_NAME: Record<string, RegExp> = {
-  'macos-arm64': /^Helios-\d+\.\d+\.\d+-mac-arm64\.dmg$/,
-  'macos-x64': /^Helios-\d+\.\d+\.\d+-mac-x64\.dmg$/,
-  'windows-x64': /^Helios-\d+\.\d+\.\d+-windows-x64\.exe$/
+  'macos-arm64': /^Sealos-\d+\.\d+\.\d+-mac-arm64\.dmg$/,
+  'macos-x64': /^Sealos-\d+\.\d+\.\d+-mac-x64\.dmg$/,
+  'windows-x64': /^Sealos-\d+\.\d+\.\d+-windows-x64\.exe$/
 }
 const VERSION = /^v?(\d+)\.(\d+)\.(\d+)$/
 const SHA256 = /^[a-f0-9]{64}$/
