@@ -3,6 +3,12 @@ import { existsSync, readFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import type { LoginEvent, RegionOption, SealosStatus } from '../../shared/types'
+import {
+  bumpContextGeneration,
+  clearContexts,
+  prefetchSiteContexts,
+  updateContextTeamName
+} from './contexts'
 
 // Same public client id and credential layout as use-sealos's sealos-api.py,
 // so Helios and the skill recognize each other's login state.
@@ -17,9 +23,9 @@ export const KNOWN_REGIONS: RegionOption[] = [
   { url: 'https://hzh.sealos.run', label: 'hzh.sealos.run（杭州）' }
 ]
 
-const SEALOS_DIR = join(homedir(), '.sealos')
+export const SEALOS_DIR = process.env.SEALOS_DIR ?? join(homedir(), '.sealos')
 export const KUBECONFIG_PATH = process.env.SEALOS_KUBECONFIG ?? join(SEALOS_DIR, 'kubeconfig')
-const AUTH_PATH = join(SEALOS_DIR, 'auth.json')
+export const AUTH_PATH = join(SEALOS_DIR, 'auth.json')
 
 function kubeconfigField(kubeconfig: string, field: string): string | undefined {
   const m = kubeconfig.match(new RegExp(`^\\s*${field}:\\s*["']?([^"'\\s]+)`, 'm'))
@@ -71,18 +77,29 @@ export async function saveKubeconfigText(text: string): Promise<SealosStatus> {
 }
 
 export async function logout(): Promise<void> {
+  bumpContextGeneration()
   await fs.rm(KUBECONFIG_PATH, { force: true })
   await fs.rm(AUTH_PATH, { force: true })
+  await clearContexts()
 }
 
 /** 当前工作空间被重命名后同步 auth.json 里的展示名 */
 export async function setCurrentWorkspaceName(teamName: string): Promise<void> {
   const auth = loadAuthJson()
-  const workspace = auth.current_workspace as { teamName?: string } | undefined
+  const workspace = auth.current_workspace as { uid?: string; teamName?: string } | undefined
   if (!workspace) return
   workspace.teamName = teamName
   await fs.writeFile(AUTH_PATH, JSON.stringify(auth, null, 2), { mode: 0o600 })
   await fs.chmod(AUTH_PATH, 0o600)
+  const region = typeof auth.region === 'string' ? auth.region : undefined
+  const uid = workspace.uid
+  if (region && typeof uid === 'string' && uid) {
+    try {
+      await updateContextTeamName(region, uid, teamName)
+    } catch {
+      // 档案更新是尽力而为，不能挡住重命名
+    }
+  }
 }
 
 interface HttpResult {
@@ -125,7 +142,7 @@ export function responseMessage(body: unknown): string | undefined {
 }
 
 /** 不同区域版本曾使用 camelCase 和 snake_case 两种应用 token 字段名。 */
-function appTokenFrom(body: unknown): string | undefined {
+export function appTokenFrom(body: unknown): string | undefined {
   const root = record(body)
   const data = record(root?.data)
   return (
@@ -303,6 +320,7 @@ export async function startDeviceLogin(
   onEvent: (event: LoginEvent) => void
 ): Promise<void> {
   cancelLogin()
+  bumpContextGeneration()
   const session: LoginSession = { cancelled: false }
   currentLogin = session
   const region = (regionInput || DEFAULT_REGION).replace(/\/+$/, '')
@@ -404,6 +422,7 @@ export async function startDeviceLogin(
 
     await saveCredentials(region, accessToken, regionToken, kubeconfig, workspace, appToken)
     emit({ type: 'success', status: getStatus() })
+    void prefetchSiteContexts().catch(() => {})
   } catch (err) {
     emit({ type: 'error', message: err instanceof Error ? err.message : String(err) })
   } finally {

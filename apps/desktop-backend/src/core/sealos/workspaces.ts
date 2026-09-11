@@ -13,6 +13,7 @@ import {
   saveCredentials,
   setCurrentWorkspaceName
 } from './auth'
+import { writeContext } from './contexts'
 
 /**
  * 工作空间列表与切换，与 Sealos desktop 前端同一套 API：
@@ -145,6 +146,7 @@ export async function switchWorkspace(uid: string): Promise<SealosStatus> {
   const currentAppToken =
     typeof currentAuth.app_token === 'string' ? currentAuth.app_token : undefined
 
+  const appToken = switchData?.appToken ?? switchData?.app_token ?? currentAppToken
   await saveCredentials(
     session.region,
     session.accessToken,
@@ -155,8 +157,22 @@ export async function switchWorkspace(uid: string): Promise<SealosStatus> {
       id: target.id,
       teamName: target.teamName
     },
-    switchData?.appToken ?? switchData?.app_token ?? currentAppToken
+    appToken
   )
+  try {
+    await writeContext(kubeconfig, {
+      region: session.region,
+      regional_token: newToken,
+      app_token: appToken,
+      workspace: {
+        uid: target.uid,
+        id: target.id,
+        teamName: target.teamName
+      }
+    })
+  } catch {
+    // 档案失败不影响已经写好的 live slot
+  }
   return getStatus()
 }
 
