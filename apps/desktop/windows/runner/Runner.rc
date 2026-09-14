@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "Sealos" "\0"
-            VALUE "FileDescription", "Helios" "\0"
+            VALUE "FileDescription", "Sealos" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "Helios" "\0"
+            VALUE "InternalName", "Sealos" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 Sealos. All rights reserved." "\0"
-            VALUE "OriginalFilename", "Helios.exe" "\0"
-            VALUE "ProductName", "Helios" "\0"
+            VALUE "OriginalFilename", "Sealos.exe" "\0"
+            VALUE "ProductName", "Sealos" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

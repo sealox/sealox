@@ -1,15 +1,15 @@
 ---
-description: 把 Helios 打成 macOS dmg 并发布到 norberia/helios-release。用户说发版、release、publish 时按此执行。
+description: 把 Sealos 桌面包装成 macOS dmg 并发布到 norberia/helios-release。用户说发版、release、publish 时按此执行。
 alwaysApply: true
 ---
 
-# 发 Helios 安装包
+# 发 Sealos 安装包
 
 用户明确说发版 / 发布 / release 才执行这两条命令。不要用 `electron-updater`、不要往私有仓 `norberia/helios` 建 GitHub Release、不要签名或公证。
 
 ## 发之前
 
-1. 根、`apps/electron`、`apps/eve`、`apps/mobile` 四个 `package.json` 的 `version` 必须相同，且就是这次要发出去的 `x.y.z`。Mac 包仍只发桌面 dmg。
+1. 根 `package.json`、`apps/desktop/pubspec.yaml`（`+build` 之前的 `x.y.z`）、`apps/desktop-backend/package.json`、`apps/eve/package.json`、`apps/mobile/package.json` 的版本必须相同，且就是这次要发出去的 `x.y.z`。没有 `apps/electron`。这条命令只发 macOS dmg。
 2. `--notes` 是给用户看的中文，两三句（绿点浮层 + GitHub Release 同一段）。问用户写什么，不要用 commit 列表充数。
 3. 本机 Apple Silicon + Node 24；`gh` 已登录 `norberia`。
 
@@ -22,13 +22,14 @@ npm run build:mac
 npm run publish:mac -- --notes "这一版改了什么。"
 ```
 
-- `build:mac` 产物：`apps/electron/dist/Helios-{version}-mac-arm64.dmg`（`CSC_IDENTITY_AUTO_DISCOVERY=false`、`--publish never`）。
-- `publish:mac` 在公开仓 [norberia/helios-release](https://github.com/norberia/helios-release) 创建 tag `v{version}` 的 Release，并更新 `latest.json`。Helios 启动时和每 30 分钟读这份清单。
+- `build:mac` 产物：`apps/desktop/dist/Sealos-{version}-mac-arm64.dmg`（当前 Mac 架构；本机是 arm64）。包名是 Sealos.app。
+- `publish:mac` 在公开仓 [norberia/helios-release](https://github.com/norberia/helios-release) 创建 tag `v{version}` 的 Release，并更新 `latest.json`。应用启动时和每 30 分钟读这份清单。
+- `build:win` 是另一条命令，在 Windows 上打 exe，不走 `publish:mac`。
 
 ## 不要
 
 - 改探测 URL、把 dmg 提交进 git、把 GitHub token 打进 App
-- 发 Windows / Linux / Intel 包（只发 arm64 dmg）
+- 用这条命令发 Windows / Linux 包（只发当前 Mac 的 macOS dmg）
 - 没打出 dmg 就跑 `publish:mac`；公开仓上 tag 已存在会失败，不要擅自删 Release
 
 ## 怎么确认绿点

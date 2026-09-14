@@ -104,9 +104,9 @@ jobs:
         env:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          test -s "Helios-$VERSION-mac-arm64.dmg"
-          test -s "Helios-$VERSION-mac-x64.dmg"
-          test -s "Helios-$VERSION-windows-x64.exe"
+          test -s "Sealos-$VERSION-mac-arm64.dmg"
+          test -s "Sealos-$VERSION-mac-x64.dmg"
+          test -s "Sealos-$VERSION-windows-x64.exe"
           sha256sum *.dmg *.exe > SHA256SUMS.txt
       - name: Publish release
         env:

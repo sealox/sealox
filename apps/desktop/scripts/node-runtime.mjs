@@ -95,7 +95,7 @@ export function developmentNodeCandidates({
           'Build',
           'Products',
           'Release',
-          'Helios.app',
+          'Sealos.app',
           'Contents',
           'Resources',
           'helios',
