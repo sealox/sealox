@@ -1,6 +1,6 @@
 {
   "name": "eve",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "type": "module",
   "imports": {
     "#*": "./agent/*",
@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.30",
-    "@esbuild/darwin-arm64": "^0.25.12",
     "@vercel/connect": "0.4.3",
     "ai": "^7.0.58",
     "eve": "^0.34.0",
@@ -24,5 +23,8 @@
   "devDependencies": {
     "@types/node": "24.x",
     "typescript": "7.0.2"
+  },
+  "optionalDependencies": {
+    "@esbuild/darwin-arm64": "^0.25.12"
   }
 }

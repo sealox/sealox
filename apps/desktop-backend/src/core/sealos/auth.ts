@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs'
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync, mkdirSync, writeFileSync, chmodSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import type { LoginEvent, RegionOption, SealosStatus } from '../../shared/types'
@@ -14,12 +14,44 @@ export const KNOWN_REGIONS: RegionOption[] = [
   { url: 'https://usw-1.sealos.io', label: 'usw-1.sealos.io（国际）' },
   { url: 'https://gzg.sealos.run', label: 'gzg.sealos.run（广州）' },
   { url: 'https://bja.sealos.run', label: 'bja.sealos.run（北京）' },
-  { url: 'https://hzh.sealos.run', label: 'hzh.sealos.run（杭州）' }
+  { url: 'https://hzh.sealos.run', label: 'hzh.sealos.run（杭州）' },
+  { url: 'https://cloud.sealos.io', label: 'cloud.sealos.io（新加坡）' }
 ]
 
 const SEALOS_DIR = join(homedir(), '.sealos')
-export const KUBECONFIG_PATH = process.env.SEALOS_KUBECONFIG ?? join(SEALOS_DIR, 'kubeconfig')
+const LEGACY_KUBECONFIG_PATH = process.env.SEALOS_KUBECONFIG ?? join(SEALOS_DIR, 'kubeconfig')
 const AUTH_PATH = join(SEALOS_DIR, 'auth.json')
+
+export function scopedKubeconfigPath(text: string): string {
+  const server = kubeconfigField(text, 'server')
+  const namespace = kubeconfigField(text, 'namespace')
+  if (!server || !namespace || !/^[a-zA-Z0-9_-]+$/.test(namespace)) {
+    throw new Error('Kubeconfig 缺少有效的 server 或 namespace')
+  }
+  return join(SEALOS_DIR, new URL(server).hostname, namespace, 'kubeconfig')
+}
+
+export function getKubeconfigPath(): string {
+  if (!existsSync(LEGACY_KUBECONFIG_PATH)) return LEGACY_KUBECONFIG_PATH
+  const text = readFileSync(LEGACY_KUBECONFIG_PATH, 'utf8')
+  const target = scopedKubeconfigPath(text)
+  mkdirSync(join(target, '..'), { recursive: true, mode: 0o700 })
+  if (!existsSync(target) || readFileSync(target, 'utf8') !== text) {
+    writeFileSync(target, text, { mode: 0o600 })
+  }
+  chmodSync(target, 0o600)
+  return target
+}
+
+async function persistKubeconfig(text: string): Promise<void> {
+  const target = scopedKubeconfigPath(text)
+  await fs.mkdir(join(target, '..'), { recursive: true, mode: 0o700 })
+  await fs.writeFile(target, text, { mode: 0o600 })
+  await fs.chmod(target, 0o600)
+  // Keep the skill and existing Agent integrations pointed at the active context.
+  await fs.writeFile(LEGACY_KUBECONFIG_PATH, text, { mode: 0o600 })
+  await fs.chmod(LEGACY_KUBECONFIG_PATH, 0o600)
+}
 
 function kubeconfigField(kubeconfig: string, field: string): string | undefined {
   const m = kubeconfig.match(new RegExp(`^\\s*${field}:\\s*["']?([^"'\\s]+)`, 'm'))
@@ -27,7 +59,7 @@ function kubeconfigField(kubeconfig: string, field: string): string | undefined 
 }
 
 export function readKubeconfigText(): string {
-  return readFileSync(KUBECONFIG_PATH, 'utf8')
+  return readFileSync(getKubeconfigPath(), 'utf8')
 }
 
 export function loadAuthJson(): Record<string, unknown> {
@@ -39,8 +71,8 @@ export function loadAuthJson(): Record<string, unknown> {
 }
 
 export function getStatus(): SealosStatus {
-  if (!existsSync(KUBECONFIG_PATH)) return { authenticated: false }
-  const kc = readFileSync(KUBECONFIG_PATH, 'utf8')
+  if (!existsSync(getKubeconfigPath())) return { authenticated: false }
+  const kc = readFileSync(getKubeconfigPath(), 'utf8')
   const server = kubeconfigField(kc, 'server')
   const hasCredential = kc.includes('token:') || kc.includes('client-certificate')
   if (!server || !hasCredential) return { authenticated: false }
@@ -54,7 +86,7 @@ export function getStatus(): SealosStatus {
     workspace: workspace?.id,
     workspaceName: workspace?.teamName,
     authenticatedAt: auth['authenticated_at'] as string | undefined,
-    kubeconfigPath: KUBECONFIG_PATH
+    kubeconfigPath: getKubeconfigPath()
   }
 }
 
@@ -65,13 +97,13 @@ export async function saveKubeconfigText(text: string): Promise<SealosStatus> {
     throw new Error('这不是有效的 Sealos kubeconfig（缺少 server 或凭证字段）')
   }
   await fs.mkdir(SEALOS_DIR, { recursive: true })
-  await fs.writeFile(KUBECONFIG_PATH, text, { mode: 0o600 })
-  await fs.chmod(KUBECONFIG_PATH, 0o600)
+  await persistKubeconfig(text)
   return getStatus()
 }
 
 export async function logout(): Promise<void> {
-  await fs.rm(KUBECONFIG_PATH, { force: true })
+  await fs.rm(getKubeconfigPath(), { force: true })
+  await fs.rm(LEGACY_KUBECONFIG_PATH, { force: true })
   await fs.rm(AUTH_PATH, { force: true })
 }
 
@@ -201,8 +233,7 @@ export async function saveCredentials(
   appToken?: string
 ): Promise<void> {
   await fs.mkdir(SEALOS_DIR, { recursive: true })
-  await fs.writeFile(KUBECONFIG_PATH, kubeconfig, { mode: 0o600 })
-  await fs.chmod(KUBECONFIG_PATH, 0o600)
+  await persistKubeconfig(kubeconfig)
   const auth: Record<string, unknown> = {
     region,
     access_token: accessToken,
@@ -251,8 +282,7 @@ export async function ensureAppToken(): Promise<string> {
         auth.app_token = refreshedAppToken
         if (refreshedRegionalToken) auth.regional_token = refreshedRegionalToken
         if (refreshedKubeconfig) {
-          await fs.writeFile(KUBECONFIG_PATH, refreshedKubeconfig, { mode: 0o600 })
-          await fs.chmod(KUBECONFIG_PATH, 0o600)
+          await persistKubeconfig(refreshedKubeconfig)
         }
         await fs.writeFile(AUTH_PATH, JSON.stringify(auth, null, 2), { mode: 0o600 })
         await fs.chmod(AUTH_PATH, 0o600)
@@ -402,6 +432,7 @@ export async function startDeviceLogin(
       }
     }
 
+    if (session.cancelled) return
     await saveCredentials(region, accessToken, regionToken, kubeconfig, workspace, appToken)
     emit({ type: 'success', status: getStatus() })
   } catch (err) {
@@ -409,4 +440,30 @@ export async function startDeviceLogin(
   } finally {
     if (currentLogin === session) currentLogin = null
   }
+}
+
+export async function switchRegion(region: string): Promise<SealosStatus | null> {
+  if (!KNOWN_REGIONS.some((item) => item.url === region)) throw new Error('未知可用区')
+  const auth = loadAuthJson()
+  if (auth.region === region) return getStatus()
+  let token = typeof auth.access_token === 'string' ? auth.access_token : undefined
+  if (typeof auth.regional_token === 'string' && typeof auth.region === 'string') {
+    const response = await requestJson(`${auth.region}/api/auth/globalToken`, { token: auth.regional_token })
+    if (responseStatus(response) === 200) token = stringField(record(response.body)?.data, 'token') ?? token
+  }
+  if (!token) return null
+  const response = await requestJson(`${region}/api/auth/regionToken`, { method: 'POST', token })
+  if ([401, 403, 409].includes(responseStatus(response))) return null
+  const data = record(record(response.body)?.data)
+  const regionalToken = stringField(data, 'token')
+  const kubeconfig = stringField(data, 'kubeconfig')
+  if (responseStatus(response) !== 200 || !regionalToken || !kubeconfig) {
+    throw new Error(`切换可用区失败：${responseMessage(response.body) ?? '目标区域未返回有效凭证'}`)
+  }
+  const namespaces = await requestJson(`${region}/api/auth/namespace/list`, { token: regionalToken })
+  const raw = record(namespaces.body)?.data
+  const list = Array.isArray(raw) ? raw : record(raw)?.namespaces
+  const workspace = Array.isArray(list) ? list.find((ns) => ns.id === kubeconfigField(kubeconfig, 'namespace')) : undefined
+  await saveCredentials(region, token, regionalToken, kubeconfig, workspace ?? null, appTokenFrom(response.body))
+  return getStatus()
 }

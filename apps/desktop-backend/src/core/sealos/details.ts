@@ -27,7 +27,7 @@ import type {
   ProjectDetail,
   StoreMount
 } from '../../shared/types'
-import { KUBECONFIG_PATH, readKubeconfigText } from './auth'
+import { getKubeconfigPath, readKubeconfigText } from './auth'
 import {
   APP_LABEL,
   PROJECT_LABEL,
@@ -58,7 +58,7 @@ interface KubeContext {
 
 function loadKube(): KubeContext {
   const kc = new k8s.KubeConfig()
-  kc.loadFromFile(KUBECONFIG_PATH)
+  kc.loadFromFile(getKubeconfigPath())
   const context = kc.getContextObject(kc.getCurrentContext())
   const namespace = context?.namespace
   if (!namespace) throw new Error('kubeconfig 里没有 namespace，无法确定工作空间')

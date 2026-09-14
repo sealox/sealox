@@ -720,6 +720,7 @@ export interface HeliosApi {
   enableDatabasePublic(name: string): Promise<void>
   disableDatabasePublic(name: string): Promise<void>
   listWorkspaces(): Promise<WorkspaceInfo[]>
+  switchRegion(region: string): Promise<SealosStatus | null>
   switchWorkspace(uid: string): Promise<SealosStatus>
   getWorkspaceDetails(uid: string): Promise<WorkspaceDetails>
   renameWorkspace(uid: string, teamName: string): Promise<SealosStatus>

@@ -9,7 +9,7 @@ import type {
   EventInfo,
   MonitorSeries
 } from '../../shared/types'
-import { getStatus, loadAuthJson, readKubeconfigText, KUBECONFIG_PATH } from './auth'
+import { getStatus, loadAuthJson, readKubeconfigText, getKubeconfigPath } from './auth'
 import { eventTime, podDetail, toEventInfo } from './details'
 import {
   databaseFromCluster,
@@ -155,7 +155,7 @@ function dbBase(): string {
 
 function loadNamespace(): { kc: k8s.KubeConfig; namespace: string } {
   const kc = new k8s.KubeConfig()
-  kc.loadFromFile(KUBECONFIG_PATH)
+  kc.loadFromFile(getKubeconfigPath())
   const namespace = kc.getContextObject(kc.getCurrentContext())?.namespace
   if (!namespace) throw new Error('kubeconfig 里没有 namespace，无法确定工作空间')
   return { kc, namespace }

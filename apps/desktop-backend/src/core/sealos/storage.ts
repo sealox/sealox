@@ -1,9 +1,9 @@
 import * as k8s from '@kubernetes/client-node'
 import * as Minio from 'minio'
-import { KUBECONFIG_PATH } from './auth'
+import { getKubeconfigPath } from './auth'
 
 function clientContext(): { kc: k8s.KubeConfig; namespace: string } {
-  const kc = new k8s.KubeConfig(); kc.loadFromFile(KUBECONFIG_PATH)
+  const kc = new k8s.KubeConfig(); kc.loadFromFile(getKubeconfigPath())
   const namespace = kc.getContextObject(kc.getCurrentContext())?.namespace
   if (!namespace) throw new Error('kubeconfig 里没有 namespace')
   return { kc, namespace }

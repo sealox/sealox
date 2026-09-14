@@ -21,6 +21,7 @@ import {
   cancelLogin,
   getStatus,
   KNOWN_REGIONS,
+  switchRegion,
   logout,
   saveKubeconfigText,
   startDeviceLogin
@@ -105,6 +106,7 @@ export const DESKTOP_METHODS = [
   'disableDatabasePublic',
   'listWorkspaces',
   'switchWorkspace',
+  'switchRegion',
   'getWorkspaceDetails',
   'renameWorkspace',
   'createWorkspace',
@@ -243,6 +245,11 @@ export async function invokeDesktopMethod(
       return disableDatabasePublic(String(args[0]))
     case 'listWorkspaces':
       return listWorkspaces()
+    case 'switchRegion': {
+      const status = await switchRegion(String(args[0]))
+      if (status) void restartAgent()
+      return status
+    }
     case 'switchWorkspace': {
       const status = await switchWorkspace(String(args[0]))
       void restartAgent()

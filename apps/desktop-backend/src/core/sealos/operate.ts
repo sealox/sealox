@@ -1,5 +1,5 @@
 import * as k8s from '@kubernetes/client-node'
-import { getStatus, loadAuthJson, readKubeconfigText, KUBECONFIG_PATH } from './auth'
+import { getStatus, loadAuthJson, readKubeconfigText, getKubeconfigPath } from './auth'
 import { APP_LABEL, PROJECT_LABEL, listKubeBlocksClusters } from './resources'
 
 const TIMEOUT_MS = 120_000
@@ -190,7 +190,7 @@ export async function deleteProject(name: string): Promise<void> {
 
 function loadNamespace(): { kc: k8s.KubeConfig; namespace: string } {
   const kc = new k8s.KubeConfig()
-  kc.loadFromFile(KUBECONFIG_PATH)
+  kc.loadFromFile(getKubeconfigPath())
   const namespace = kc.getContextObject(kc.getCurrentContext())?.namespace
   if (!namespace) throw new Error('kubeconfig 里没有 namespace，无法确定工作空间')
   return { kc, namespace }

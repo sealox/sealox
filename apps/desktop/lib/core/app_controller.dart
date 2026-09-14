@@ -71,6 +71,8 @@ class AppController extends ChangeNotifier {
         loginEvent = jsonMap(event.data);
         if (loginEvent?['type'] == 'success') {
           status = jsonMap(loginEvent?['status']);
+          snapshot = null;
+          details.clear();
           loginEvent = null;
           _startRefreshTimer();
           unawaited(refreshResources(silent: true));
@@ -142,7 +144,10 @@ class AppController extends ChangeNotifier {
     refreshing = true;
     if (!silent) notifyListeners();
     try {
-      snapshot = jsonMap(await backend.call('getResources'));
+      final requestedStatus = status;
+      final result = jsonMap(await backend.call('getResources'));
+      if (!identical(requestedStatus, status)) return;
+      snapshot = result;
       error = null;
       _pruneDetails();
     } catch (exception) {
@@ -186,6 +191,19 @@ class AppController extends ChangeNotifier {
       error = exception.toString();
       notifyListeners();
     }
+  }
+
+  Future<void> changeRegion(String region) async {
+    final result = await backend.call('switchRegion', [region]);
+    if (result == null) {
+      await startLogin(region);
+      return;
+    }
+    status = jsonMap(result);
+    snapshot = null;
+    details.clear();
+    notifyListeners();
+    await refreshResources();
   }
 
   Future<void> changeWorkspace(String uid) async {

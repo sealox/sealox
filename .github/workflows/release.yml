@@ -1,0 +1,121 @@
+name: Release desktop
+
+on:
+  push:
+    tags:
+      - '**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - id: version
+        name: Validate release tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^v?([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo '::error::Release tags must be vX.Y.Z or X.Y.Z.'
+            exit 1
+          fi
+          echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            platform: macos
+            arch: arm64
+          - runner: macos-15-intel
+            platform: macos
+            arch: x64
+          - runner: windows-2022
+            platform: windows
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      RELEASE_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          architecture: ${{ matrix.arch }}
+          cache: npm
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: npm ci --include=optional
+      - name: Install Flutter dependencies
+        working-directory: apps/desktop
+        run: flutter pub get
+      - name: Locate Inno Setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $compiler)) {
+            choco install innosetup --no-progress -y
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (-not (Test-Path $compiler)) { throw 'Inno Setup compiler is missing' }
+          "ISCC_PATH=$compiler" >> $env:GITHUB_ENV
+      - name: Build installer with bundled runtime
+        run: node apps/desktop/scripts/build-desktop.mjs ${{ matrix.platform }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installer-*
+          path: dist
+          merge-multiple: true
+      - name: Verify artifacts and generate checksums
+        working-directory: dist
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          test -s "Helios-$VERSION-mac-arm64.dmg"
+          test -s "Helios-$VERSION-mac-x64.dmg"
+          test -s "Helios-$VERSION-windows-x64.exe"
+          sha256sum *.dmg *.exe > SHA256SUMS.txt
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --draft --title "Sealos $TAG" --generate-notes
+          fi
+          gh release upload "$TAG" dist/* --clobber
+          gh release edit "$TAG" --draft=false

@@ -30,6 +30,7 @@ class _AccountScreenState extends State<AccountScreen>
   JsonMap? proxyOverview;
   JsonMap? update;
   List<JsonMap>? executors;
+  List<JsonMap> regions = [];
   String version = '';
   String? error;
   bool busy = false;
@@ -66,6 +67,7 @@ class _AccountScreenState extends State<AccountScreen>
         controller.invoke('getUpdateStatus'),
         controller.invoke('getAppVersion'),
         controller.invoke('getAgentExecutors'),
+        controller.invoke('getRegions'),
       ]);
       if (mounted) {
         setState(() {
@@ -73,6 +75,7 @@ class _AccountScreenState extends State<AccountScreen>
           update = jsonMap(values[1]);
           version = stringValue(values[2]);
           executors = jsonList(values[3]);
+          regions = jsonList(values[4]);
         });
       }
     } catch (exception) {
@@ -192,13 +195,80 @@ class _AccountScreenState extends State<AccountScreen>
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                _accountRow(
-                  '区域',
-                  stringValue(
-                    status['regionDomain'],
-                    stringValue(status['server']),
+                SizedBox(
+                  height: 32,
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 120,
+                        child: Text(
+                          '可用区',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          regions
+                                  .where(
+                                    (r) =>
+                                        stringValue(r['url']) ==
+                                        'https://${stringValue(status['regionDomain'])}',
+                                  )
+                                  .map((r) => stringValue(r['label']))
+                                  .firstOrNull ??
+                              stringValue(status['regionDomain']),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      MenuAnchor(
+                        alignmentOffset: const Offset(0, 4),
+                        menuChildren: [
+                          for (final region in regions)
+                            MenuItemButton(
+                              onPressed: () => _run(() async {
+                                await controller.changeRegion(
+                                  stringValue(region['url']),
+                                );
+                                if (mounted) {
+                                  setState(() => proxyOverview = null);
+                                }
+                              }),
+                              child: Text(stringValue(region['label'])),
+                            ),
+                        ],
+                        builder: (context, menu, child) => OutlinedButton.icon(
+                          onPressed:
+                              busy ||
+                                  controller.loginEvent != null ||
+                                  regions.isEmpty
+                              ? null
+                              : () => menu.isOpen ? menu.close() : menu.open(),
+                          icon: const Icon(Icons.swap_horiz, size: 17),
+                          label: const Text('切换可用区'),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+                if (controller.loginEvent != null)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          controller.loginEvent?['type'] == 'error'
+                              ? stringValue(controller.loginEvent?['message'])
+                              : '请在浏览器中完成目标可用区授权',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: controller.cancelLogin,
+                        child: const Text('取消'),
+                      ),
+                    ],
+                  ),
                 _accountRow('API Server', stringValue(status['server'])),
                 _accountRow(
                   '工作空间',
@@ -213,6 +283,8 @@ class _AccountScreenState extends State<AccountScreen>
                   'kubeconfig',
                   stringValue(status['kubeconfigPath']),
                   copy: true,
+                  displayValue: stringValue(status['kubeconfigPath'])
+                      .replaceFirst(RegExp(r'^.*[/\\]\.sealos[/\\]'), ''),
                 ),
               ],
             ),
@@ -417,7 +489,12 @@ class _AccountScreenState extends State<AccountScreen>
     );
   }
 
-  Widget _accountRow(String label, String value, {bool copy = false}) {
+  Widget _accountRow(
+    String label,
+    String value, {
+    bool copy = false,
+    String? displayValue,
+  }) {
     return SizedBox(
       height: 32,
       child: Row(
@@ -428,7 +505,7 @@ class _AccountScreenState extends State<AccountScreen>
           ),
           Expanded(
             child: SelectableText(
-              value.isEmpty ? '-' : value,
+              value.isEmpty ? '-' : (displayValue ?? value),
               maxLines: 1,
               style: Theme.of(context).textTheme.bodyMedium,
             ),

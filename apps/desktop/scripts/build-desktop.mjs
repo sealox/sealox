@@ -11,13 +11,14 @@ const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const flutter =
   process.env.FLUTTER_BIN || (process.platform === 'win32' ? 'flutter.bat' : 'flutter')
 const pubspec = readFileSync(join(desktopRoot, 'pubspec.yaml'), 'utf8')
-const version = /^version:\s*([^+\s]+)/m.exec(pubspec)?.[1]
-if (!version) throw new Error('Cannot read version from pubspec.yaml')
+const version = process.env.RELEASE_VERSION || /^version:\s*([^+\s]+)/m.exec(pubspec)?.[1]
+if (!version || !/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Release version must be X.Y.Z')
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd ?? repoRoot,
     stdio: 'inherit',
+    shell: process.platform === 'win32' && /\.(cmd|bat)$/i.test(command),
     env: { ...process.env, ...options.env }
   })
   if (result.status !== 0) throw new Error(`${command} failed with ${result.status}`)
@@ -37,13 +38,13 @@ run(npm, ['run', 'build', '-w', 'eve'], {
   env: { HELIOS_AI_BASE_URL: 'http://127.0.0.1', HELIOS_AI_KEY: 'build' }
 })
 run(npm, ['run', 'build', '-w', '@helios/desktop-backend'])
-run(flutter, ['build', platform, '--release'], { cwd: desktopRoot })
+run(flutter, ['build', platform, '--release', `--build-name=${version}`], { cwd: desktopRoot })
 
 const dist = join(desktopRoot, 'dist')
 mkdirSync(dist, { recursive: true })
 if (platform === 'macos') {
   const macArchitecture = process.arch
-  const app = join(desktopRoot, 'build', 'macos', 'Build', 'Products', 'Release', 'Helios.app')
+  const app = join(desktopRoot, 'build', 'macos', 'Build', 'Products', 'Release', 'Sealos.app')
   const runtime = join(app, 'Contents', 'Resources', 'helios')
   run(process.execPath, [
     join(desktopRoot, 'scripts', 'prepare-runtime.mjs'),
@@ -53,7 +54,7 @@ if (platform === 'macos') {
   run('codesign', ['--force', '--deep', '--sign', '-', app])
   const dmg = join(dist, `Helios-${version}-mac-${macArchitecture}.dmg`)
   rmSync(dmg, { force: true })
-  run('hdiutil', ['create', '-volname', 'Helios', '-srcfolder', app, '-ov', '-format', 'UDZO', dmg])
+  run('hdiutil', ['create', '-volname', 'Sealos', '-srcfolder', app, '-ov', '-format', 'UDZO', dmg])
 } else {
   const build = join(desktopRoot, 'build', 'windows', 'x64', 'runner', 'Release')
   run(process.execPath, [
