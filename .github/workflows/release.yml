@@ -72,6 +72,8 @@ jobs:
           cache: true
       - name: Install dependencies
         run: npm ci --include=optional
+      - name: Verify native build dependencies
+        run: node --test apps/desktop/scripts/release-dependencies.test.mjs
       - name: Install Flutter dependencies
         working-directory: apps/desktop
         run: flutter pub get
