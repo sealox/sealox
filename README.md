@@ -1,6 +1,9 @@
 # Sealos
 
-在 Sealos 上做出自己的应用。Agent 负责部署、照看、操作你账号里的资源。
+一键上线，持续智能化运维，Sealos AI Agent。
+
+<img width="1051" height="796" alt="image" src="https://github.com/user-attachments/assets/fb51c738-d287-4491-a25d-bf61113afc47" />
+
 
 当前功能：[docs/index.md](docs/index.md)。
 为什么存在、边界：[docs/versions/vision.md](docs/versions/vision.md)。
