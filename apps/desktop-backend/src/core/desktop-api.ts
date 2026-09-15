@@ -1,3 +1,4 @@
+import { fetchBillingStatus } from './sealos/billing'
 import type { ChatAttachment, ChatInputResponse, LoginEvent } from '../shared/types'
 import {
   archiveChat,
@@ -66,6 +67,7 @@ import { createStorageBucket, setStoragePolicy, getWorkspaceStorageCredentials, 
 import { getDomainBinding, bindDomain } from './sealos/domains'
 
 export const DESKTOP_METHODS = [
+  'getBillingStatus',
   'getAppVersion',
   'getUpdateStatus',
   'downloadUpdate',
@@ -154,6 +156,8 @@ export async function invokeDesktopMethod(
   args: unknown[] = []
 ): Promise<unknown> {
   switch (method) {
+    case 'getBillingStatus':
+      return fetchBillingStatus()
     case 'getAppVersion':
       return desktopHost().appVersion
     case 'getUpdateStatus':
