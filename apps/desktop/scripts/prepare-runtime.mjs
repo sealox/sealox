@@ -2,7 +2,7 @@
 import { spawnSync } from 'node:child_process'
 import { createReadStream, createWriteStream, existsSync, mkdirSync, rmSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { cp, mkdtemp, rename } from 'node:fs/promises'
+import { cp, mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { pipeline } from 'node:stream/promises'
@@ -99,7 +99,7 @@ try {
   const extractedName = archiveName.replace(`.${extension}`, '')
   if (target.startsWith('macos-')) {
     run('tar', ['-xzf', archive, '-C', temporary])
-    await rename(join(temporary, extractedName), join(destination, 'node'))
+    await cp(join(temporary, extractedName), join(destination, 'node'), { recursive: true })
   } else {
     run('powershell.exe', [
       '-NoProfile',
@@ -110,7 +110,9 @@ try {
       '-DestinationPath',
       temporary
     ])
-    await rename(join(temporary, extractedName), join(destination, 'node'))
+    // GitHub's Windows runner keeps TEMP on C: and the checkout on D:.
+    // fs.rename cannot cross those volumes, so copy the extracted runtime.
+    await cp(join(temporary, extractedName), join(destination, 'node'), { recursive: true })
 
     const gitVersion = '2.51.0'
     const portableName = `PortableGit-${gitVersion}-64-bit.7z.exe`
