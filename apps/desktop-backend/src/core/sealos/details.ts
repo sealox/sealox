@@ -265,7 +265,7 @@ function networkEntries(
   for (const svc of related) {
     const svcName = svc.metadata?.name ?? appName
     for (const port of svc.spec?.ports ?? []) {
-      const ingress = ingresses.find((ing) =>
+      const matches = ingresses.filter((ing) =>
         (ing.spec?.rules ?? []).some((rule) =>
           (rule.http?.paths ?? []).some(
             (path) =>
@@ -274,6 +274,7 @@ function networkEntries(
           )
         )
       )
+      for (const [index, ingress] of (matches.length ? matches : [undefined]).entries()) {
       const host = ingress?.spec?.rules?.find((r) => r.host)?.host
       const assignedPrefix = ingress?.metadata?.labels?.[PUBLIC_DOMAIN_KEY]
       const custom = host
@@ -286,11 +287,12 @@ function networkEntries(
         protocol: port.protocol ?? 'TCP',
         appProtocol:
           ingress?.metadata?.annotations?.['nginx.ingress.kubernetes.io/backend-protocol'],
-        clusterAddress: `${svcName}.${namespace}.svc.cluster.local:${port.port}`,
+        clusterAddress: index === 0 ? `${svcName}.${namespace}.svc.cluster.local:${port.port}` : '',
         publicUrl: host ? `https://${host}` : undefined,
         customDomain: custom,
         nodePort: port.nodePort ?? undefined
       })
+      }
     }
   }
   // 无 service 的工作负载：仍给出 ingress 直连域名（保证与列表页 urls 一致）

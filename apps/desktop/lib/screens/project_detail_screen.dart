@@ -9,6 +9,7 @@ import '../core/app_controller.dart';
 import '../core/json.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/bind_domain_dialog.dart';
 
 class ProjectDetailScreen extends StatefulWidget {
   const ProjectDetailScreen({required this.name, super.key});
@@ -189,6 +190,14 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
             onPressed: () => Navigator.pop(dialogContext),
             child: const Text('关闭'),
           ),
+          if (url.isNotEmpty)
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await showBindDomainDialog(context, url);
+              },
+              child: const Text('绑定域名'),
+            ),
           if (url.isNotEmpty)
             FilledButton.icon(
               onPressed: () {

@@ -9,6 +9,27 @@ function clientContext(): { kc: k8s.KubeConfig; namespace: string } {
   return { kc, namespace }
 }
 
+export async function createStorageBucket(name: string, policy = 'private'): Promise<void> {
+  if (policy !== 'private' && policy !== 'publicRead') throw new Error('不支持的访问策略')
+  if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(name)) {
+    throw new Error('Bucket 名称须为 3–63 位小写字母、数字或连字符，且以字母或数字开头和结尾')
+  }
+  const { kc, namespace } = clientContext()
+  try {
+    await kc.makeApiClient(k8s.CustomObjectsApi).createNamespacedCustomObject({
+      group: 'objectstorage.sealos.io', version: 'v1', namespace,
+      plural: 'objectstoragebuckets',
+      body: {
+        apiVersion: 'objectstorage.sealos.io/v1', kind: 'ObjectStorageBucket',
+        metadata: { name, namespace }, spec: { policy }
+      }
+    })
+  } catch (error) {
+    if ((error as { code?: number }).code === 409) throw new Error('同名 Bucket 已存在，请更换名称')
+    throw error
+  }
+}
+
 export async function getStorageCredentials(bucket: string) {
   const { kc, namespace } = clientContext()
   const custom = kc.makeApiClient(k8s.CustomObjectsApi)

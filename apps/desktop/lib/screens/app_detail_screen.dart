@@ -7,6 +7,7 @@ import '../core/json.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import '../widgets/detail_widgets.dart';
+import '../widgets/bind_domain_dialog.dart';
 
 class AppDetailScreen extends StatefulWidget {
   const AppDetailScreen({required this.name, required this.kind, super.key});
@@ -402,6 +403,14 @@ class _AppDetailScreenState extends State<AppDetailScreen>
                 listen: false,
               ).invoke('copyText', [endpoint.address]),
               icon: const Icon(Icons.copy_outlined, size: 16),
+            ),
+          if (endpoint.isPublic)
+            TextButton(
+              onPressed: () async {
+                await showBindDomainDialog(context, endpoint.address);
+                if (mounted) await _load();
+              },
+              child: const Text('绑定域名'),
             ),
           if (endpoint.isPublic)
             IconButton(

@@ -668,6 +668,9 @@ export interface AgentExecutorInfo {
 }
 
 export interface HeliosApi {
+  getDomainBinding(publicUrl: string): Promise<{ target: string; domains: string[] }>
+  bindDomain(publicUrl: string, domain: string): Promise<{ url: string; target: string }>
+  createStorageBucket(name: string, policy?: 'private' | 'publicRead'): Promise<void>
   setStoragePolicy(bucket: string, policy: 'private' | 'publicRead'): Promise<void>
   getWorkspaceStorageCredentials(): Promise<{url: string; accessKey: string; secretKey: string}>
   getStorageCredentials(bucket: string): Promise<{bucket: string; url: string; accessKey: string; secretKey: string}>

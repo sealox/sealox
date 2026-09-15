@@ -4,6 +4,7 @@ import '../core/app_controller.dart';
 import '../core/json.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/create_bucket_dialog.dart';
 
 enum ResourceType { projects, apps, databases, storage }
 
@@ -20,6 +21,31 @@ class _ResourceListScreenState extends State<ResourceListScreen> {
   final selected = <String>{};
   final search = TextEditingController();
   bool busy = false;
+
+  Future<void> _createBucket() async {
+    if (busy) return;
+    final controller = AppScope.of(context, listen: false);
+    setState(() => busy = true);
+    try {
+      final created = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => CreateBucketDialog(
+          create: (name, policy) async {
+            await controller.invoke('createStorageBucket', [name, policy]);
+          },
+        ),
+      );
+      if (created != true || !mounted) return;
+      search.clear();
+      selected.clear();
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Bucket 已创建，存储服务正在准备中')));
+      await controller.refreshResources(silent: true);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
 
   Future<void> _credentials() async {
     if (busy) return;
@@ -127,6 +153,14 @@ class _ResourceListScreenState extends State<ResourceListScreen> {
                   icon: const Icon(Icons.key_outlined, size: 19),
                   label: const Text('获取密钥'),
                 ),
+              if (widget.type == ResourceType.storage) ...[
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: busy ? null : _createBucket,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('新建 Bucket'),
+                ),
+              ],
             ],
           ),
         ),

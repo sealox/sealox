@@ -62,7 +62,8 @@ import { clearDeepseekKey, getModelSettings, saveDeepseekKey } from './model-set
 import { getAgentExecutors, setAgentExecutor } from './agent-executors'
 import { downloadUpdate, getUpdateStatus, startUpdateChecker, stopUpdateChecker } from './update'
 import { desktopHost } from './desktop-host'
-import { setStoragePolicy, getWorkspaceStorageCredentials, getStorageCredentials, uploadStorageFile, downloadStorageFile, listStorageObjects, uploadStorageObject, deleteStorageObject, createStorageFolder, getStorageDownloadUrl, getStorageInfo } from './sealos/storage'
+import { createStorageBucket, setStoragePolicy, getWorkspaceStorageCredentials, getStorageCredentials, uploadStorageFile, downloadStorageFile, listStorageObjects, uploadStorageObject, deleteStorageObject, createStorageFolder, getStorageDownloadUrl, getStorageInfo } from './sealos/storage'
+import { getDomainBinding, bindDomain } from './sealos/domains'
 
 export const DESKTOP_METHODS = [
   'getAppVersion',
@@ -132,6 +133,9 @@ export const DESKTOP_METHODS = [
   'deleteChat',
   'setStoragePolicy',
   'getWorkspaceStorageCredentials',
+  'createStorageBucket',
+  'getDomainBinding',
+  'bindDomain',
   'getStorageCredentials',
   'uploadStorageFile',
   'downloadStorageFile',
@@ -326,6 +330,12 @@ export async function invokeDesktopMethod(
       return setStoragePolicy(String(args[0]), String(args[1]))
     case 'getWorkspaceStorageCredentials':
       return getWorkspaceStorageCredentials()
+    case 'createStorageBucket':
+      return createStorageBucket(String(args[0] ?? ''), String(args[1] ?? 'private'))
+    case 'getDomainBinding':
+      return getDomainBinding(String(args[0] ?? ''))
+    case 'bindDomain':
+      return bindDomain(String(args[0] ?? ''), String(args[1] ?? ''))
     case 'getStorageCredentials':
       return getStorageCredentials(String(args[0]))
     case 'uploadStorageFile':
