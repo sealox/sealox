@@ -1,14 +1,14 @@
 import { createHash } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
-import { rename, unlink } from 'node:fs/promises'
+import { rename, unlink, mkdir, mkdtemp } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { Readable, Transform } from 'node:stream'
 import type { AppUpdateStatus } from '../shared/types'
 import { desktopHost } from './desktop-host'
 
-const MANIFEST_URL = 'https://raw.githubusercontent.com/norberia/helios-release/main/latest.json'
-const URL_PREFIX = 'https://github.com/norberia/helios-release/releases/download/'
+const RELEASE_URL = 'https://api.github.com/repos/sealos-apps/sealos/releases/latest'
+const URL_PREFIX = 'https://github.com/sealos-apps/sealos/releases/download/'
 const CHECK_INTERVAL_MS = 30 * 60 * 1000
 const MANIFEST_TIMEOUT_MS = 15_000
 const DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1000
@@ -31,6 +31,7 @@ interface Manifest {
 interface InternalStatus extends AppUpdateStatus {
   url?: string
   sha256?: string
+  installerPath?: string
 }
 
 let status: InternalStatus = {
@@ -50,7 +51,9 @@ function toPublic(value: InternalStatus): AppUpdateStatus {
     notes: value.notes,
     phase: value.phase,
     progress: value.progress,
-    error: value.error
+    error: value.error,
+    checking,
+    checkedAt: value.checkedAt
   }
 }
 
@@ -64,7 +67,7 @@ function parseVersion(raw: string): [number, number, number] | null {
   return [Number(match[1]), Number(match[2]), Number(match[3])]
 }
 
-function isNewer(latest: string, current: string): boolean {
+export function isNewer(latest: string, current: string): boolean {
   const a = parseVersion(latest)
   const b = parseVersion(current)
   if (!a || !b) return false
@@ -100,9 +103,13 @@ function readManifest(value: unknown): Manifest | null {
   }
 }
 
-function artifactKey(): string | null {
-  if (process.platform === 'darwin') return process.arch === 'arm64' ? 'macos-arm64' : 'macos-x64'
-  if (process.platform === 'win32' && process.arch === 'x64') return 'windows-x64'
+export function artifactKey(
+  platform: string = process.platform,
+  arch: string = process.arch
+): string | null {
+  if (platform === 'darwin' && (arch === 'arm64' || arch === 'x64'))
+    return arch === 'arm64' ? 'macos-arm64' : 'macos-x64'
+  if (platform === 'win32' && arch === 'x64') return 'windows-x64'
   return null
 }
 
@@ -122,26 +129,78 @@ function downloadableArtifact(manifest: Manifest): { url: string; sha256: string
   }
 }
 
-async function checkForUpdate(): Promise<void> {
+export async function checkForUpdate(): Promise<void> {
   if (checking || status.phase === 'downloading') return
   checking = true
+  broadcast()
   const currentVersion = desktopHost().appVersion
   try {
-    const response = await fetch(MANIFEST_URL, {
+    const response = await fetch(RELEASE_URL, {
       signal: AbortSignal.timeout(MANIFEST_TIMEOUT_MS),
       cache: 'no-store',
       headers: {
         accept: 'application/json',
-        'user-agent': `Helios/${currentVersion}`
+        'user-agent': `Sealos/${currentVersion}`
       }
     })
-    if (!response.ok) return
-    const manifest = readManifest(await response.json())
+    if (response.status === 404)
+      throw new Error('无法访问 GitHub Release：仓库可能为私有，或尚未发布正式版本')
+    if (!response.ok) throw new Error(`检查更新失败：GitHub HTTP ${response.status}`)
+    const release = (await response.json()) as {
+      tag_name?: string
+      body?: string
+      draft?: boolean
+      prerelease?: boolean
+      assets?: { name: string; browser_download_url: string }[]
+    }
+    if (release.draft || release.prerelease || !release.tag_name || !parseVersion(release.tag_name))
+      throw new Error('GitHub 最新版本不是有效的正式版本')
+    if (!isNewer(release.tag_name, currentVersion)) {
+      status = {
+        currentVersion,
+        available: false,
+        phase: 'idle',
+        checkedAt: new Date().toISOString()
+      }
+      return
+    }
+    const key = artifactKey()
+    const version = release.tag_name.replace(/^v/, '')
+    const suffix =
+      key === 'macos-arm64'
+        ? 'mac-arm64.dmg'
+        : key === 'macos-x64'
+          ? 'mac-x64.dmg'
+          : key === 'windows-x64'
+            ? 'windows-x64.exe'
+            : null
+    if (!suffix) throw new Error('当前平台暂不支持更新')
+    const asset = release.assets?.find((a) => a.name === `Sealos-${version}-${suffix}`)
+    const sums = release.assets?.find((a) => a.name === 'SHA256SUMS.txt')
+    const prefix = `${URL_PREFIX}${release.tag_name}/`
+    if (
+      !asset ||
+      !sums ||
+      asset.browser_download_url !== prefix + asset.name ||
+      sums.browser_download_url !== prefix + sums.name
+    )
+      throw new Error('此 Release 缺少当前平台安装包或校验文件')
+    const checksumResponse = await fetch(sums.browser_download_url, {
+      signal: AbortSignal.timeout(MANIFEST_TIMEOUT_MS)
+    })
+    if (!checksumResponse.ok) throw new Error(`读取安装包校验失败：HTTP ${checksumResponse.status}`)
+    const checksum = (await checksumResponse.text())
+      .split(/\r?\n/)
+      .map((line) => line.trim().split(/\s+\*?/))
+      .find((parts) => parts[1] === asset.name)?.[0]
+    const manifest = readManifest({
+      version,
+      notes: release.body,
+      artifacts: { [key!]: { url: asset.browser_download_url, sha256: checksum } }
+    })
     const artifact = manifest ? downloadableArtifact(manifest) : null
     if (!manifest || !isNewer(manifest.version, currentVersion) || !artifact) {
-      status = { currentVersion, available: false, phase: 'idle' }
-      broadcast()
-      return
+      throw new Error('安装包校验信息无效')
     }
     const keep =
       (status.phase === 'ready' || status.phase === 'error') &&
@@ -155,13 +214,20 @@ async function checkForUpdate(): Promise<void> {
       sha256: artifact.sha256,
       phase: keep ? status.phase : 'available',
       progress: keep ? status.progress : undefined,
-      error: keep ? status.error : undefined
+      error: keep ? status.error : undefined,
+      checkedAt: new Date().toISOString(),
+      installerPath: keep ? status.installerPath : undefined
     }
     broadcast()
-  } catch {
-    // 断网或清单不可用：保持上一次状态，不打扰。
+  } catch (error) {
+    status = {
+      ...status,
+      currentVersion,
+      error: error instanceof Error ? error.message : '检查更新失败'
+    }
   } finally {
     checking = false
+    broadcast()
   }
 }
 
@@ -178,19 +244,31 @@ export function getUpdateStatus(): AppUpdateStatus {
 }
 
 export async function downloadUpdate(): Promise<void> {
+  if (checking) throw new Error('正在检查更新，请稍后重试')
   if (!status.available || !status.url || !status.sha256) return
   if (status.phase === 'downloading') return
+  if (status.phase === 'ready' && status.installerPath) {
+    const error = await desktopHost().openPath(status.installerPath)
+    if (error) {
+      status = { ...status, phase: 'error', error }
+      broadcast()
+    }
+    return
+  }
 
   const url = status.url
   const expected = status.sha256
-  const dest = join(desktopHost().downloadsPath, basename(new URL(url).pathname))
-  const partial = `${dest}.part`
+  let partial: string | undefined
 
   status = { ...status, phase: 'downloading', progress: 0, error: undefined }
   lastProgressAt = 0
   broadcast()
 
   try {
+    await mkdir(desktopHost().downloadsPath, { recursive: true })
+    const folder = await mkdtemp(join(desktopHost().downloadsPath, 'Sealos-update-'))
+    const dest = join(folder, basename(new URL(url).pathname))
+    partial = `${dest}.part`
     const response = await fetch(url, {
       signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
       redirect: 'follow',
@@ -223,10 +301,10 @@ export async function downloadUpdate(): Promise<void> {
 
     const openError = await desktopHost().openPath(dest)
     if (openError) throw new Error(openError)
-    status = { ...status, phase: 'ready', progress: 1, error: undefined }
+    status = { ...status, phase: 'ready', progress: 1, error: undefined, installerPath: dest }
     broadcast()
   } catch (err) {
-    await unlink(partial).catch(() => undefined)
+    if (partial) await unlink(partial).catch(() => undefined)
     const message = err instanceof Error ? err.message : '下载失败'
     status = { ...status, phase: 'error', error: message }
     broadcast()
@@ -234,6 +312,7 @@ export async function downloadUpdate(): Promise<void> {
 }
 
 export function startUpdateChecker(): void {
+  if (timer) return
   status = { currentVersion: desktopHost().appVersion, available: false, phase: 'idle' }
   void checkForUpdate().catch((error: unknown) => {
     console.error('[update] initial check failed', error)

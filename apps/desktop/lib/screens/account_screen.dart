@@ -440,6 +440,22 @@ class _AccountScreenState extends State<AccountScreen>
                     const Icon(Icons.system_update_alt, size: 20),
                     const SizedBox(width: 9),
                     Expanded(child: Text('Sealos $version')),
+                    TextButton(
+                      onPressed:
+                          boolValue(update?['checking']) ||
+                              update?['phase'] == 'downloading'
+                          ? null
+                          : () => _run(() async {
+                              await AppScope.of(
+                                context,
+                                listen: false,
+                              ).invoke('checkForUpdate');
+                            }),
+                      child: Text(
+                        boolValue(update?['checking']) ? '检查中…' : '检查更新',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     if (boolValue(update?['available']))
                       FilledButton.icon(
                         onPressed: busy || update?['phase'] == 'downloading'
@@ -454,12 +470,20 @@ class _AccountScreenState extends State<AccountScreen>
                         label: Text(
                           update?['phase'] == 'downloading'
                               ? '下载中'
-                              : '下载 ${stringValue(update?['latestVersion'])}',
+                              : update?['phase'] == 'ready'
+                              ? '打开安装包'
+                              : '更新至 ${stringValue(update?['latestVersion'])}',
                         ),
                       )
                     else
                       Text(
-                        '已是最新版本',
+                        stringValue(update?['error']).isNotEmpty
+                            ? '检查失败'
+                            : boolValue(update?['checking'])
+                            ? '正在检查'
+                            : update?['checkedAt'] == null
+                            ? '尚未检查'
+                            : '已是最新版本',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                   ],

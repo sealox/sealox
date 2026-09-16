@@ -642,6 +642,8 @@ export type AppUpdatePhase = 'idle' | 'available' | 'downloading' | 'ready' | 'e
 
 /** 渲染进程可见的更新状态。下载 URL 只留在主进程。 */
 export interface AppUpdateStatus {
+  checking?: boolean
+  checkedAt?: string
   currentVersion: string
   available: boolean
   latestVersion?: string
@@ -685,6 +687,7 @@ export interface HeliosApi {
   getStorageDownloadUrl(bucket: string, name: string): Promise<string>
   getAppVersion(): Promise<string>
   getUpdateStatus(): Promise<AppUpdateStatus>
+  checkForUpdate(): Promise<void>
   downloadUpdate(): Promise<void>
   getStatus(): Promise<SealosStatus>
   getRegions(): Promise<RegionOption[]>

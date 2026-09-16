@@ -60,7 +60,7 @@ import {
 } from './sealos/workspaces'
 import { clearDeepseekKey, getModelSettings, saveDeepseekKey } from './model-settings'
 import { getAgentExecutors, setAgentExecutor } from './agent-executors'
-import { downloadUpdate, getUpdateStatus, startUpdateChecker, stopUpdateChecker } from './update'
+import { checkForUpdate, downloadUpdate, getUpdateStatus, startUpdateChecker, stopUpdateChecker } from './update'
 import { desktopHost } from './desktop-host'
 import { createStorageBucket, setStoragePolicy, getWorkspaceStorageCredentials, getStorageCredentials, uploadStorageFile, downloadStorageFile, listStorageObjects, uploadStorageObject, deleteStorageObject, createStorageFolder, getStorageDownloadUrl, getStorageInfo } from './sealos/storage'
 import { getDomainBinding, bindDomain } from './sealos/domains'
@@ -68,6 +68,7 @@ import { getDomainBinding, bindDomain } from './sealos/domains'
 export const DESKTOP_METHODS = [
   'getAppVersion',
   'getUpdateStatus',
+  'checkForUpdate',
   'downloadUpdate',
   'getStatus',
   'getRegions',
@@ -158,6 +159,8 @@ export async function invokeDesktopMethod(
       return desktopHost().appVersion
     case 'getUpdateStatus':
       return getUpdateStatus()
+    case 'checkForUpdate':
+      return checkForUpdate()
     case 'downloadUpdate':
       return downloadUpdate()
     case 'getStatus':

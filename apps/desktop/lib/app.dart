@@ -5,6 +5,7 @@ import 'core/theme.dart';
 import 'screens/login_screen.dart';
 import 'screens/shell_screen.dart';
 import 'widgets/common.dart';
+import 'widgets/update_prompt.dart';
 
 class HeliosApp extends StatefulWidget {
   const HeliosApp({required this.controller, super.key});
@@ -38,13 +39,15 @@ class _HeliosAppState extends State<HeliosApp> {
       themeMode: ThemeMode.system,
       home: AppScope(
         controller: widget.controller,
-        child: AnimatedBuilder(
-          animation: widget.controller,
-          builder: (context, _) {
-            if (widget.controller.booting) return const BrandLoading();
-            if (!widget.controller.authenticated) return const LoginScreen();
-            return const ShellScreen();
-          },
+        child: UpdatePrompt(
+          child: AnimatedBuilder(
+            animation: widget.controller,
+            builder: (context, _) {
+              if (widget.controller.booting) return const BrandLoading();
+              if (!widget.controller.authenticated) return const LoginScreen();
+              return const ShellScreen();
+            },
+          ),
         ),
       ),
     );

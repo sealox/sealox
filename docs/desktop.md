@@ -32,16 +32,12 @@ Sealos Release 中的内置 Node 24。可使用 `HELIOS_BACKEND_PATH` 和 `HELIO
   SHA-256 校验 PortableGit。
 - 本地源码构建仍依赖用户机器上的 Docker、kubectl 和相关 CLI，这与原 Electron 功能合同一致。
 
-`latest.json` 支持原 macOS 单产物格式，也支持双平台格式：
+## 检查更新
 
-```json
-{
-  "version": "0.9.0",
-  "notes": "...",
-  "artifacts": {
-    "macos-arm64": { "url": ".../Sealos-0.9.0-mac-arm64.dmg", "sha256": "..." },
-    "macos-x64": { "url": ".../Sealos-0.9.0-mac-x64.dmg", "sha256": "..." },
-    "windows-x64": { "url": ".../Sealos-0.9.0-windows-x64.exe", "sha256": "..." }
-  }
-}
-```
+客户端启动时及每 30 分钟读取 `https://api.github.com/repos/sealos-apps/sealos/releases/latest`，账户页也提供「检查更新」。仅接受正式的 `vX.Y.Z` 或 `X.Y.Z` 版本，按数字比较版本号。
+
+发现新版后弹窗展示版本与发布说明，同一版本每次运行仅自动提醒一次。用户点击「立即更新」后，客户端选择对应平台的安装包，并使用同一 Release 中的 `SHA256SUMS.txt` 校验下载内容。校验失败不会打开文件，可重新下载。
+
+校验通过后打开系统安装包：macOS 用户将应用拖到「应用程序」替换旧版，Windows 用户按安装向导完成安装。这是安装包更新流程，不会静默替换正在运行的程序。账户页可重新打开已下载的安装包。
+
+Release 必须公开可读。私有仓库、限流或断网会显示检查失败，不会误报「已是最新版本」；客户端不包含 GitHub 私人凭证。已有安装包不会被下载覆盖，每次下载使用独立目录。
