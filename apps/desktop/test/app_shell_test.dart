@@ -48,6 +48,13 @@ class FakeBackend extends HeliosBackend {
         'workspace': 'ns-test',
         'workspaceName': '测试空间',
       },
+      'getBillingStatus' => {
+        'cashMicroUnits': 8500000,
+        'currency': 'cny',
+        'workspaceDebt': false,
+        'topUpUrl':
+            'https://bja.sealos.run/?openapp=system-costcenter%3Fmode%3Dtopup',
+      },
       'getRegions' => <Object?>[
         {'label': '北京', 'url': 'https://bja.sealos.run'},
       ],
@@ -306,6 +313,17 @@ void main() {
     await tester.tap(find.text('设置').first);
     await tester.pumpAndSettle();
     expect(find.text('对话模型'), findsOneWidget);
+    expect(find.text('8.50 CNY'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Helios Agent'),
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView).last,
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     expect(find.text('Helios Agent'), findsOneWidget);
     expect(find.text('Development'), findsOneWidget);
     expect(find.text('查看详情'), findsOneWidget);
