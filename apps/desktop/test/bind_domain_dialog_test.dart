@@ -9,11 +9,19 @@ import 'app_shell_test.dart' show FakeBackend;
 
 class DomainBackend extends FakeBackend {
   bool fail = true;
+  String certificateStatus = 'pending';
   List<Object?>? binding;
   @override
   Future<T?> call<T>(String method, [List<Object?> args = const []]) async {
     if (method == 'getDomainBinding') {
-      return {'target': 'app.platform.test', 'domains': []} as T;
+      return {
+        'target': 'app.platform.test',
+        'certificates': binding == null || fail
+            ? []
+            : [
+                {'domain': 'app.example.com', 'status': certificateStatus},
+              ],
+      } as T;
     }
     if (method == 'bindDomain') {
       binding = args;
@@ -32,16 +40,25 @@ void main() {
       final backend = DomainBackend();
       final controller = AppController(backend);
       await tester.pumpWidget(
-        AppScope(
-          controller: controller,
-          child: MaterialApp(
-            theme: buildHeliosTheme(),
-            home: const Scaffold(
-              body: BindDomainDialog(publicUrl: 'https://app.platform.test'),
+        MaterialApp(
+          theme: buildHeliosTheme(),
+          home: AppScope(
+            controller: controller,
+            child: Scaffold(
+              body: Builder(
+                builder: (context) => TextButton(
+                  onPressed: () => showBindDomainDialog(
+                    context,
+                    'https://app.platform.test',
+                  ),
+                  child: const Text('打开绑定弹窗'),
+                ),
+              ),
             ),
           ),
         ),
       );
+      await tester.tap(find.text('打开绑定弹窗'));
       await tester.pumpAndSettle();
       expect(find.text('app.platform.test'), findsOneWidget);
       expect(find.byTooltip('复制 CNAME 目标'), findsOneWidget);
@@ -59,7 +76,15 @@ void main() {
       await tester.tap(find.text('验证并绑定'));
       await tester.pumpAndSettle();
       expect(find.text('https://app.example.com'), findsOneWidget);
-      expect(find.textContaining('HTTPS 证书正在申请'), findsOneWidget);
+      expect(find.textContaining('HTTPS 证书申请中'), findsOneWidget);
+      backend.certificateStatus = 'ready';
+      await tester.tap(find.text('刷新证书状态'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('HTTPS 证书已签发'), findsOneWidget);
+      backend.certificateStatus = 'unknown';
+      await tester.tap(find.text('刷新证书状态'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('暂时无法读取证书状态'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       controller.dispose();

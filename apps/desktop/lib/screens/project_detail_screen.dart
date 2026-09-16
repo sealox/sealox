@@ -195,6 +195,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
               onPressed: () async {
                 Navigator.pop(dialogContext);
                 await showBindDomainDialog(context, url);
+                if (mounted) await _load();
               },
               child: const Text('绑定域名'),
             ),

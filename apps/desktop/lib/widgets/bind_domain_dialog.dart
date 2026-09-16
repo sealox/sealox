@@ -8,10 +8,14 @@ Future<void> showBindDomainDialog(
   BuildContext context,
   String publicUrl,
 ) async {
+  final controller = AppScope.of(context, listen: false);
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (_) => BindDomainDialog(publicUrl: publicUrl),
+    builder: (_) => AppScope(
+      controller: controller,
+      child: BindDomainDialog(publicUrl: publicUrl),
+    ),
   );
 }
 
@@ -25,7 +29,7 @@ class BindDomainDialog extends StatefulWidget {
 class _BindDomainDialogState extends State<BindDomainDialog> {
   final name = TextEditingController();
   String? target, error, boundUrl;
-  List<String> domains = [];
+  List<JsonMap> certificates = [];
   bool loading = true, saving = false, started = false;
   @override
   void didChangeDependencies() {
@@ -57,9 +61,7 @@ class _BindDomainDialogState extends State<BindDomainDialog> {
       if (mounted) {
         setState(() {
           target = stringValue(data['target']);
-          domains = (data['domains'] as List? ?? [])
-              .map((e) => e.toString())
-              .toList();
+          certificates = jsonList(data['certificates']);
         });
       }
     } catch (e) {
@@ -84,6 +86,7 @@ class _BindDomainDialogState extends State<BindDomainDialog> {
         ]),
       );
       if (mounted) setState(() => boundUrl = stringValue(result['url']));
+      if (mounted) await _load();
       await controller.refreshResources(silent: true);
     } catch (e) {
       if (mounted) setState(() => error = e.toString());
@@ -111,7 +114,7 @@ class _BindDomainDialogState extends State<BindDomainDialog> {
               else if (boundUrl != null) ...[
                 SelectableText(boundUrl!),
                 const SizedBox(height: 12),
-                const Text('域名路由已绑定，HTTPS 证书正在申请，请稍后访问。'),
+                const Text('域名路由已绑定。证书签发需要一些时间，可刷新查看 HTTPS 状态。'),
               ] else if (target != null) ...[
                 const Text('自定义域名'),
                 const SizedBox(height: 8),
@@ -147,13 +150,24 @@ class _BindDomainDialogState extends State<BindDomainDialog> {
                   'TTL 使用默认值。主机记录填写对应子域名，DNS 生效后点击「验证并绑定」。',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
-                if (domains.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    '已绑定：${domains.join('、')}',
-                    style: Theme.of(context).textTheme.bodySmall,
+              ],
+              if (!loading && certificates.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Text('已绑定域名'),
+                for (final certificate in certificates)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: SelectableText(
+                      '${stringValue(certificate['domain'])} · ${switch (certificate['status']) {
+                        'ready' => 'HTTPS 证书已签发',
+                        'pending' => 'HTTPS 证书申请中',
+                        'failed' => 'HTTPS 证书申请失败',
+                        'expired' => 'HTTPS 证书已过期，等待续签',
+                        _ => '暂时无法读取证书状态',
+                      }}${stringValue(certificate['message']).isEmpty ? '' : '\n${stringValue(certificate['message'])}'}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                   ),
-                ],
               ],
               if (error != null) ...[
                 const SizedBox(height: 12),
@@ -173,6 +187,11 @@ class _BindDomainDialogState extends State<BindDomainDialog> {
         ),
         if (!loading && target == null)
           TextButton(onPressed: _load, child: const Text('重试')),
+        if (boundUrl != null)
+          TextButton(
+            onPressed: loading || saving ? null : _load,
+            child: const Text('刷新证书状态'),
+          ),
         if (target != null && boundUrl == null)
           FilledButton(
             onPressed: saving || name.text.trim().isEmpty ? null : _bind,
