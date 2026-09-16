@@ -8,6 +8,7 @@ import '../core/backend_client.dart';
 import '../core/json.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/billing.dart';
 import 'ai_proxy_screen.dart';
 
 class AccountScreen extends StatefulWidget {
@@ -290,6 +291,8 @@ class _AccountScreenState extends State<AccountScreen>
             ),
           ),
         ),
+        const SizedBox(height: 24),
+        const AccountBalanceCard(),
         const SizedBox(height: 24),
         const SectionTitle('Agent 配置'),
         Card(

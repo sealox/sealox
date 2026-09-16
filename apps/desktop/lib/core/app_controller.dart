@@ -33,6 +33,45 @@ class AppController extends ChangeNotifier {
   final HeliosBackend backend;
   StreamSubscription<BackendEvent>? _events;
   Timer? _refreshTimer;
+  Timer? _billingTimer;
+  JsonMap? billing;
+  bool billingRefreshing = false;
+  int _billingGeneration = 0;
+
+  Future<void> refreshBilling() async {
+    if (!authenticated || billingRefreshing) return;
+    final generation = _billingGeneration;
+    billingRefreshing = true;
+    notifyListeners();
+    try {
+      final value = jsonMap(await backend.call('getBillingStatus'));
+      if (generation == _billingGeneration) billing = value;
+    } catch (_) {
+      if (generation == _billingGeneration) {
+        billing = {'balanceError': '暂时无法获取余额，请稍后重试'};
+      }
+    } finally {
+      if (generation == _billingGeneration) {
+        billingRefreshing = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  void _resetBilling() {
+    _billingGeneration++;
+    billing = null;
+    billingRefreshing = false;
+    _billingTimer?.cancel();
+    if (authenticated) {
+      unawaited(refreshBilling());
+      _billingTimer = Timer.periodic(
+        const Duration(seconds: 60),
+        (_) => unawaited(refreshBilling()),
+      );
+    }
+  }
+
   JsonMap? status;
   JsonMap? snapshot;
   DesktopTab tab = DesktopTab.home;
@@ -200,6 +239,7 @@ class AppController extends ChangeNotifier {
       return;
     }
     status = jsonMap(result);
+    _resetBilling();
     snapshot = null;
     details.clear();
     notifyListeners();
@@ -208,6 +248,7 @@ class AppController extends ChangeNotifier {
 
   Future<void> changeWorkspace(String uid) async {
     status = jsonMap(await backend.call('switchWorkspace', [uid]));
+    _resetBilling();
     snapshot = null;
     details.clear();
     tab = DesktopTab.home;
@@ -218,6 +259,7 @@ class AppController extends ChangeNotifier {
     await backend.call('logout');
     _refreshTimer?.cancel();
     status = {'authenticated': false};
+    _resetBilling();
     snapshot = null;
     details.clear();
     loginEvent = null;
@@ -262,6 +304,7 @@ class AppController extends ChangeNotifier {
   }
 
   void _startRefreshTimer() {
+    _resetBilling();
     _refreshTimer?.cancel();
     _refreshTimer = Timer.periodic(
       const Duration(seconds: 5),
@@ -285,6 +328,8 @@ class AppController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _billingGeneration++;
+    _billingTimer?.cancel();
     _refreshTimer?.cancel();
     unawaited(_events?.cancel());
     backend.dispose();

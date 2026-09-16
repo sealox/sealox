@@ -6,6 +6,7 @@ import 'screens/login_screen.dart';
 import 'screens/shell_screen.dart';
 import 'widgets/common.dart';
 import 'widgets/update_prompt.dart';
+import 'widgets/billing.dart';
 
 class HeliosApp extends StatefulWidget {
   const HeliosApp({required this.controller, super.key});
@@ -45,7 +46,7 @@ class _HeliosAppState extends State<HeliosApp> {
             builder: (context, _) {
               if (widget.controller.booting) return const BrandLoading();
               if (!widget.controller.authenticated) return const LoginScreen();
-              return const ShellScreen();
+              return const BillingReminder(child: ShellScreen());
             },
           ),
         ),

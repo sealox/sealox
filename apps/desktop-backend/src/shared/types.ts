@@ -669,7 +669,19 @@ export interface AgentExecutorInfo {
   enabled: boolean
 }
 
+export interface BillingStatus {
+  /** Cash only, excluding credits. One currency unit equals 1,000,000. */
+  cashMicroUnits: number | null
+  currency: string | null
+  balanceError: string | null
+  /** Platform-confirmed workspace suspension, not a cash-balance heuristic. */
+  workspaceDebt: boolean | null
+  isOwner: boolean | null
+  topUpUrl: string | null
+}
+
 export interface HeliosApi {
+  getBillingStatus(): Promise<BillingStatus>
   getDomainBinding(publicUrl: string): Promise<{ target: string; domains: string[] }>
   bindDomain(publicUrl: string, domain: string): Promise<{ url: string; target: string }>
   createStorageBucket(name: string, policy?: 'private' | 'publicRead'): Promise<void>

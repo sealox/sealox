@@ -1,3 +1,5 @@
+import { KubeConfig } from '@kubernetes/client-node'
+import { sameKubeconfigContext } from './kubeconfig-context'
 import { promises as fs } from 'fs'
 import { existsSync, readFileSync, mkdirSync, writeFileSync, chmodSync } from 'fs'
 import { homedir } from 'os'
@@ -103,7 +105,25 @@ export async function saveKubeconfigText(text: string): Promise<SealosStatus> {
   if (!server || !hasCredential) {
     throw new Error('这不是有效的 Sealos kubeconfig（缺少 server 或凭证字段）')
   }
+  // Validate the active context before invalidating a working account session.
+  try {
+    const imported = new KubeConfig()
+    imported.loadFromString(text)
+    if (!imported.getCurrentCluster() || !imported.getCurrentUser() ||
+        !imported.getContextObject(imported.getCurrentContext())?.namespace) {
+      throw new Error('Missing active context')
+    }
+  } catch {
+    throw new Error('这不是有效的 Sealos kubeconfig（缺少有效的当前上下文）')
+  }
+  scopedKubeconfigPath(text)
+  let sameContext = false
+  try { sameContext = sameKubeconfigContext(readKubeconfigText(), text) } catch { /* First import. */ }
   await fs.mkdir(SEALOS_DIR, { recursive: true })
+  if (!sameContext) {
+    bumpContextGeneration()
+    await fs.rm(AUTH_PATH, { force: true })
+  }
   await persistKubeconfig(text)
   return getStatus()
 }
